@@ -1,0 +1,26 @@
+.pbc-card {
+  border: 1px solid #dcdcde;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 460px;
+  background: #fff;
+}
+
+.pbc-title {
+  margin-top: 0;
+}
+
+.pbc-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pbc-form input,
+.pbc-form button {
+  padding: 0.5rem;
+}
+
+.pbc-result {
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
