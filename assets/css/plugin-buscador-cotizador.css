@@ -24,3 +24,28 @@
   margin-top: 0.75rem;
   font-weight: 600;
 }
+
+.pbc-contact-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pbc-action-button {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #2271b1;
+  background: #2271b1;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pbc-action-button:hover,
+.pbc-action-button:focus {
+  background: #135e96;
+  border-color: #135e96;
+  color: #fff;
+}
