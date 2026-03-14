@@ -65,6 +65,17 @@ class Plugin_Buscador_Cotizador {
 			$form_data['submitted'] = true;
 		}
 
+		$summary_lines = array();
+
+		if ( $form_data['submitted'] ) {
+			$summary_lines = array(
+				sprintf( __( 'Destino: %s', 'plugin-buscador-cotizador' ), $form_data['destino'] ),
+				sprintf( __( 'Fecha: %s', 'plugin-buscador-cotizador' ), $form_data['fecha'] ),
+				sprintf( __( 'Cantidad de noches: %d', 'plugin-buscador-cotizador' ), (int) $form_data['noches'] ),
+				sprintf( __( 'Cantidad de pasajeros: %d', 'plugin-buscador-cotizador' ), (int) $form_data['pasajeros'] ),
+			);
+		}
+
 		ob_start();
 		?>
 		<div class="pbc-card">
@@ -90,17 +101,51 @@ class Plugin_Buscador_Cotizador {
 				<div class="pbc-result" aria-live="polite">
 					<p><strong><?php esc_html_e( 'Resumen de búsqueda:', 'plugin-buscador-cotizador' ); ?></strong></p>
 					<ul>
-						<li><?php echo esc_html( sprintf( __( 'Destino: %s', 'plugin-buscador-cotizador' ), $form_data['destino'] ) ); ?></li>
-						<li><?php echo esc_html( sprintf( __( 'Fecha: %s', 'plugin-buscador-cotizador' ), $form_data['fecha'] ) ); ?></li>
-						<li><?php echo esc_html( sprintf( __( 'Cantidad de noches: %d', 'plugin-buscador-cotizador' ), (int) $form_data['noches'] ) ); ?></li>
-						<li><?php echo esc_html( sprintf( __( 'Cantidad de pasajeros: %d', 'plugin-buscador-cotizador' ), (int) $form_data['pasajeros'] ) ); ?></li>
+						<?php foreach ( $summary_lines as $summary_line ) : ?>
+							<li><?php echo esc_html( $summary_line ); ?></li>
+						<?php endforeach; ?>
 					</ul>
+					<div class="pbc-contact-actions">
+						<a class="pbc-action-button" href="<?php echo esc_url( $this->build_whatsapp_url( $summary_lines ) ); ?>" target="_blank" rel="noopener noreferrer">
+							<?php esc_html_e( 'Enviar por WhatsApp', 'plugin-buscador-cotizador' ); ?>
+						</a>
+						<a class="pbc-action-button" href="<?php echo esc_url( $this->build_mailto_url( $summary_lines ) ); ?>">
+							<?php esc_html_e( 'Enviar por Email', 'plugin-buscador-cotizador' ); ?>
+						</a>
+					</div>
 				</div>
 			<?php endif; ?>
 		</div>
 		<?php
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Construye la URL de WhatsApp con mensaje prearmado.
+	 *
+	 * @param array<int, string> $summary_lines Líneas del resumen.
+	 *
+	 * @return string
+	 */
+	private function build_whatsapp_url( $summary_lines ) {
+		$message = __( "Hola, quiero consultar esta búsqueda:\n", 'plugin-buscador-cotizador' ) . implode( "\n", $summary_lines );
+
+		return 'https://wa.me/?text=' . rawurlencode( $message );
+	}
+
+	/**
+	 * Construye la URL mailto con asunto y cuerpo prearmados.
+	 *
+	 * @param array<int, string> $summary_lines Líneas del resumen.
+	 *
+	 * @return string
+	 */
+	private function build_mailto_url( $summary_lines ) {
+		$subject = __( 'Consulta de cotización turística', 'plugin-buscador-cotizador' );
+		$body    = __( "Hola,\n\nQuiero consultar la siguiente búsqueda:\n", 'plugin-buscador-cotizador' ) . implode( "\n", $summary_lines );
+
+		return 'mailto:?subject=' . rawurlencode( $subject ) . '&body=' . rawurlencode( $body );
 	}
 
 	/**
