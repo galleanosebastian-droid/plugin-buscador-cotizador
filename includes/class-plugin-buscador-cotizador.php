@@ -46,61 +46,120 @@ class Plugin_Buscador_Cotizador {
 	 */
 	public function render_buscador_cotizador_shortcode() {
 		wp_enqueue_style( 'pbc-styles' );
-
-		$defaults = array(
-			'destino'    => '',
-			'fecha'      => '',
-			'noches'     => '',
-			'pasajeros'  => '',
-			'submitted'  => false,
-		);
-
-		$form_data = $defaults;
-
-		if ( isset( $_POST['pbc_form_submitted'] ) ) {
-			$form_data['destino']   = isset( $_POST['pbc_destino'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_destino'] ) ) : '';
-			$form_data['fecha']     = isset( $_POST['pbc_fecha'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_fecha'] ) ) : '';
-			$form_data['noches']    = isset( $_POST['pbc_noches'] ) ? absint( $_POST['pbc_noches'] ) : '';
-			$form_data['pasajeros'] = isset( $_POST['pbc_pasajeros'] ) ? absint( $_POST['pbc_pasajeros'] ) : '';
-			$form_data['submitted'] = true;
-		}
+		$form_data = $this->get_buscador_cotizador_form_data();
 
 		ob_start();
 		?>
 		<div class="pbc-card">
 			<h3 class="pbc-title"><?php esc_html_e( 'Buscador Cotizador', 'plugin-buscador-cotizador' ); ?></h3>
-			<form class="pbc-form" method="post">
-				<label for="pbc-destino"><?php esc_html_e( 'Destino', 'plugin-buscador-cotizador' ); ?></label>
-				<input id="pbc-destino" name="pbc_destino" type="text" value="<?php echo esc_attr( $form_data['destino'] ); ?>" required />
-
-				<label for="pbc-fecha"><?php esc_html_e( 'Fecha', 'plugin-buscador-cotizador' ); ?></label>
-				<input id="pbc-fecha" name="pbc_fecha" type="date" value="<?php echo esc_attr( $form_data['fecha'] ); ?>" required />
-
-				<label for="pbc-noches"><?php esc_html_e( 'Cantidad de noches', 'plugin-buscador-cotizador' ); ?></label>
-				<input id="pbc-noches" name="pbc_noches" type="number" min="1" value="<?php echo esc_attr( (string) $form_data['noches'] ); ?>" required />
-
-				<label for="pbc-pasajeros"><?php esc_html_e( 'Cantidad de pasajeros', 'plugin-buscador-cotizador' ); ?></label>
-				<input id="pbc-pasajeros" name="pbc_pasajeros" type="number" min="1" value="<?php echo esc_attr( (string) $form_data['pasajeros'] ); ?>" required />
-
-				<input name="pbc_form_submitted" type="hidden" value="1" />
-				<button type="submit"><?php esc_html_e( 'Buscar / Cotizar', 'plugin-buscador-cotizador' ); ?></button>
-			</form>
+			<?php $this->render_buscador_cotizador_form( $form_data ); ?>
 
 			<?php if ( $form_data['submitted'] ) : ?>
-				<div class="pbc-result" aria-live="polite">
-					<p><strong><?php esc_html_e( 'Resumen de búsqueda:', 'plugin-buscador-cotizador' ); ?></strong></p>
-					<ul>
-						<li><?php echo esc_html( sprintf( __( 'Destino: %s', 'plugin-buscador-cotizador' ), $form_data['destino'] ) ); ?></li>
-						<li><?php echo esc_html( sprintf( __( 'Fecha: %s', 'plugin-buscador-cotizador' ), $form_data['fecha'] ) ); ?></li>
-						<li><?php echo esc_html( sprintf( __( 'Cantidad de noches: %d', 'plugin-buscador-cotizador' ), (int) $form_data['noches'] ) ); ?></li>
-						<li><?php echo esc_html( sprintf( __( 'Cantidad de pasajeros: %d', 'plugin-buscador-cotizador' ), (int) $form_data['pasajeros'] ) ); ?></li>
-					</ul>
-				</div>
+				<?php $this->render_buscador_cotizador_summary( $form_data ); ?>
 			<?php endif; ?>
 		</div>
 		<?php
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Obtiene datos por defecto del formulario.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_default_buscador_cotizador_form_data() {
+		return array(
+			'destino'   => '',
+			'fecha'     => '',
+			'noches'    => '',
+			'pasajeros' => '',
+			'submitted' => false,
+		);
+	}
+
+	/**
+	 * Obtiene los datos sanitizados del formulario enviado.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_buscador_cotizador_form_data() {
+		$form_data = $this->get_default_buscador_cotizador_form_data();
+
+		if ( ! $this->is_buscador_cotizador_submission() ) {
+			return $form_data;
+		}
+
+		$form_data['destino']   = isset( $_POST['pbc_destino'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_destino'] ) ) : '';
+		$form_data['fecha']     = isset( $_POST['pbc_fecha'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_fecha'] ) ) : '';
+		$form_data['noches']    = isset( $_POST['pbc_noches'] ) ? absint( $_POST['pbc_noches'] ) : '';
+		$form_data['pasajeros'] = isset( $_POST['pbc_pasajeros'] ) ? absint( $_POST['pbc_pasajeros'] ) : '';
+		$form_data['submitted'] = true;
+
+		return $form_data;
+	}
+
+	/**
+	 * Verifica si la request corresponde al formulario del shortcode.
+	 *
+	 * @return bool
+	 */
+	private function is_buscador_cotizador_submission() {
+		if ( ! isset( $_POST['pbc_form_submitted'], $_POST['pbc_form_nonce'] ) ) {
+			return false;
+		}
+
+		return (bool) wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['pbc_form_nonce'] ) ), 'pbc_form_submit' );
+	}
+
+	/**
+	 * Renderiza formulario principal del shortcode.
+	 *
+	 * @param array<string, mixed> $form_data Datos del formulario.
+	 *
+	 * @return void
+	 */
+	private function render_buscador_cotizador_form( $form_data ) {
+		?>
+		<form class="pbc-form" method="post">
+			<label for="pbc-destino"><?php esc_html_e( 'Destino', 'plugin-buscador-cotizador' ); ?></label>
+			<input id="pbc-destino" name="pbc_destino" type="text" value="<?php echo esc_attr( $form_data['destino'] ); ?>" required />
+
+			<label for="pbc-fecha"><?php esc_html_e( 'Fecha', 'plugin-buscador-cotizador' ); ?></label>
+			<input id="pbc-fecha" name="pbc_fecha" type="date" value="<?php echo esc_attr( $form_data['fecha'] ); ?>" required />
+
+			<label for="pbc-noches"><?php esc_html_e( 'Cantidad de noches', 'plugin-buscador-cotizador' ); ?></label>
+			<input id="pbc-noches" name="pbc_noches" type="number" min="1" value="<?php echo esc_attr( (string) $form_data['noches'] ); ?>" required />
+
+			<label for="pbc-pasajeros"><?php esc_html_e( 'Cantidad de pasajeros', 'plugin-buscador-cotizador' ); ?></label>
+			<input id="pbc-pasajeros" name="pbc_pasajeros" type="number" min="1" value="<?php echo esc_attr( (string) $form_data['pasajeros'] ); ?>" required />
+
+			<input name="pbc_form_submitted" type="hidden" value="1" />
+			<input name="pbc_form_nonce" type="hidden" value="<?php echo esc_attr( wp_create_nonce( 'pbc_form_submit' ) ); ?>" />
+			<button type="submit"><?php esc_html_e( 'Buscar / Cotizar', 'plugin-buscador-cotizador' ); ?></button>
+		</form>
+		<?php
+	}
+
+	/**
+	 * Renderiza resumen de datos enviados.
+	 *
+	 * @param array<string, mixed> $form_data Datos del formulario.
+	 *
+	 * @return void
+	 */
+	private function render_buscador_cotizador_summary( $form_data ) {
+		?>
+		<div class="pbc-result" aria-live="polite">
+			<p><strong><?php esc_html_e( 'Resumen de búsqueda:', 'plugin-buscador-cotizador' ); ?></strong></p>
+			<ul>
+				<li><?php echo esc_html( sprintf( __( 'Destino: %s', 'plugin-buscador-cotizador' ), $form_data['destino'] ) ); ?></li>
+				<li><?php echo esc_html( sprintf( __( 'Fecha: %s', 'plugin-buscador-cotizador' ), $form_data['fecha'] ) ); ?></li>
+				<li><?php echo esc_html( sprintf( __( 'Cantidad de noches: %d', 'plugin-buscador-cotizador' ), (int) $form_data['noches'] ) ); ?></li>
+				<li><?php echo esc_html( sprintf( __( 'Cantidad de pasajeros: %d', 'plugin-buscador-cotizador' ), (int) $form_data['pasajeros'] ) ); ?></li>
+			</ul>
+		</div>
+		<?php
 	}
 
 	/**
