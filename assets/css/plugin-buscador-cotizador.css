@@ -1,23 +1,78 @@
 .pbc-card {
-  border: 1px solid #dcdcde;
-  border-radius: 8px;
-  padding: 1rem;
-  max-width: 460px;
+  border: 1px solid #e6e8ec;
+  border-radius: 18px;
+  padding: 1.25rem;
   background: #fff;
+  box-shadow: 0 14px 32px rgba(16, 24, 40, 0.08);
 }
 
 .pbc-title {
-  margin-top: 0;
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+  color: #1f2937;
 }
 
 .pbc-form {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.9rem;
 }
 
-.pbc-form input,
-.pbc-form button {
-  padding: 0.5rem;
+.pbc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pbc-field label {
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.pbc-form input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #d0d7e2;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.95rem;
+  color: #1f2937;
+}
+
+.pbc-form input:focus {
+  border-color: #2271b1;
+  box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.15);
+  outline: none;
+}
+
+.pbc-destino-input-wrapper {
+  position: relative;
+}
+
+.pbc-field-submit {
+  justify-content: flex-end;
+}
+
+.pbc-submit-button {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2271b1 0%, #135e96 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pbc-submit-button:hover,
+.pbc-submit-button:focus {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(19, 94, 150, 0.26);
 }
 
 .pbc-result {
@@ -48,4 +103,20 @@
   background: #135e96;
   border-color: #135e96;
   color: #fff;
+}
+
+@media (min-width: 992px) {
+  .pbc-card {
+    padding: 1.5rem;
+  }
+
+  .pbc-form {
+    grid-template-columns: minmax(200px, 2.2fr) minmax(145px, 1.2fr) minmax(120px, 0.9fr) minmax(135px, 1fr) minmax(190px, 1.25fr);
+    align-items: end;
+    gap: 0.85rem;
+  }
+
+  .pbc-field-submit {
+    align-self: end;
+  }
 }
