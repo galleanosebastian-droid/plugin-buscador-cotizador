@@ -15,6 +15,75 @@
     }
   }
 
+
+  function bindDestinationAutocomplete() {
+    var input = document.getElementById('pbc-destino');
+    var datalist = document.getElementById('pbc-destino-suggestions');
+
+    if (!input || !datalist) {
+      return;
+    }
+
+    var lastTerm = '';
+
+    function renderOptions(items) {
+      datalist.innerHTML = '';
+
+      (items || []).forEach(function (item) {
+        var option = document.createElement('option');
+        option.value = item && item.value ? item.value : '';
+        option.label = item && item.label ? item.label : option.value;
+        datalist.appendChild(option);
+      });
+    }
+
+    function fetchSuggestions(term) {
+      if (!window.pbcFrontend || !window.pbcFrontend.ajaxUrl || !window.pbcFrontend.destinationNonce) {
+        return;
+      }
+
+      var url = new URL(window.pbcFrontend.ajaxUrl, window.location.origin);
+      url.searchParams.set('action', 'pbc_destination_suggestions');
+      url.searchParams.set('nonce', window.pbcFrontend.destinationNonce);
+      url.searchParams.set('term', term);
+
+      fetch(url.toString(), {
+        method: 'GET',
+        credentials: 'same-origin',
+      })
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (data) {
+          if (term !== lastTerm) {
+            return;
+          }
+
+          if (data && data.success && data.data && Array.isArray(data.data.items)) {
+            renderOptions(data.data.items);
+            return;
+          }
+
+          renderOptions([]);
+        })
+        .catch(function () {
+          renderOptions([]);
+        });
+    }
+
+    input.addEventListener('input', function () {
+      var term = (input.value || '').trim();
+      lastTerm = term;
+
+      if (term.length < 2) {
+        renderOptions([]);
+        return;
+      }
+
+      fetchSuggestions(term);
+    });
+  }
+
   function bindEmailInquiryModal() {
     var modal = document.querySelector('[data-pbc-email-modal]');
     if (!modal) {
@@ -154,5 +223,6 @@
     }
   });
 
+  bindDestinationAutocomplete();
   bindEmailInquiryModal();
 })();
