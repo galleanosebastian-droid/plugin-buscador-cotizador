@@ -203,3 +203,76 @@
     grid-template-columns: 250px 1fr;
   }
 }
+
+.pbc-contact-actions .pbc-action-button {
+  cursor: pointer;
+}
+
+.pbc-email-modal[hidden] {
+  display: none;
+}
+
+.pbc-email-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.pbc-email-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.pbc-email-modal-dialog {
+  position: relative;
+  width: min(92vw, 560px);
+  margin: 7vh auto;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1rem;
+  z-index: 1;
+}
+
+.pbc-email-modal-close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.6rem;
+  border: 0;
+  background: transparent;
+  font-size: 1.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pbc-email-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pbc-email-form input,
+.pbc-email-form textarea {
+  width: 100%;
+  border: 1px solid #d0d9e6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.95rem;
+}
+
+.pbc-email-feedback {
+  margin: 0.65rem 0 0;
+  font-size: 0.9rem;
+}
+
+.pbc-email-feedback.is-success {
+  color: #166534;
+}
+
+.pbc-email-feedback.is-error {
+  color: #b91c1c;
+}
+
+.pbc-modal-open {
+  overflow: hidden;
+}
