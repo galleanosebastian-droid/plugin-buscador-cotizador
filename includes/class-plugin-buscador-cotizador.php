@@ -394,7 +394,7 @@ class Plugin_Buscador_Cotizador {
 			'layer'       => 'sin_resultados',
 			'message'     => $empty_message,
 			'posts'       => array(),
-			'suggestions' => $this->build_suggestions( $destino_input ),
+			'suggestions' => $this->build_suggestions( $destino_input, $fecha, $noches, absint( (string) $form_data['pasajeros'] ) ),
 		);
 	}
 
@@ -641,18 +641,74 @@ class Plugin_Buscador_Cotizador {
 	/**
 	 * Genera sugerencias automáticas cuando no hay resultados.
 	 *
-	 * @param string $destino Destino ingresado por el usuario.
+	 * @param string $destino   Destino ingresado por el usuario.
+	 * @param string $fecha     Fecha ingresada por el usuario.
+	 * @param int    $noches    Cantidad de noches solicitada.
+	 * @param int    $pasajeros Cantidad de pasajeros solicitada.
 	 *
 	 * @return array<int, string>
 	 */
-	private function build_suggestions( $destino ) {
+	private function build_suggestions( $destino, $fecha, $noches, $pasajeros ) {
 		$base_destination = ! empty( $destino ) ? $destino : __( 'Tu destino', 'plugin-buscador-cotizador' );
+		$month_year       = $this->format_month_year_label( $fecha );
+		$noches           = absint( $noches );
+		$pasajeros        = absint( $pasajeros );
 
-		return array(
-			sprintf( __( '%s · 3 noches · abril', 'plugin-buscador-cotizador' ), $base_destination ),
-			sprintf( __( '%s · otras fechas', 'plugin-buscador-cotizador' ), $base_destination ),
-			sprintf( __( '%s · consulta personalizada', 'plugin-buscador-cotizador' ), $base_destination ),
-		);
+		$suggestions = array();
+
+		if ( $noches > 0 && '' !== $month_year ) {
+			$suggestions[] = sprintf( __( '%1$s · %2$d noches · %3$s', 'plugin-buscador-cotizador' ), $base_destination, $noches, $month_year );
+		}
+
+		if ( $pasajeros > 0 ) {
+			$passenger_label = 1 === $pasajeros ? __( 'pasajero', 'plugin-buscador-cotizador' ) : __( 'pasajeros', 'plugin-buscador-cotizador' );
+			$time_label      = '' !== $month_year ? $month_year : __( 'salida flexible', 'plugin-buscador-cotizador' );
+			$suggestions[]   = sprintf( __( '%1$s · %2$d %3$s · %4$s', 'plugin-buscador-cotizador' ), $base_destination, $pasajeros, $passenger_label, $time_label );
+		}
+
+		if ( $noches > 0 ) {
+			$min_noches    = max( 1, $noches - 1 );
+			$max_noches    = $noches + 1;
+			$suggestions[] = sprintf( __( '%1$s · %2$d a %3$d noches', 'plugin-buscador-cotizador' ), $base_destination, $min_noches, $max_noches );
+		}
+
+		if ( '' !== $month_year ) {
+			$suggestions[] = sprintf( __( '%1$s · %2$s · salida flexible', 'plugin-buscador-cotizador' ), $base_destination, $month_year );
+		}
+
+		$suggestions[] = sprintf( __( '%s · consulta personalizada', 'plugin-buscador-cotizador' ), $base_destination );
+
+		$suggestions = array_values( array_unique( $suggestions ) );
+
+		if ( count( $suggestions ) > 4 ) {
+			$suggestions = array_slice( $suggestions, 0, 4 );
+		}
+
+		if ( count( $suggestions ) < 3 ) {
+			$suggestions[] = sprintf( __( '%s · salida flexible', 'plugin-buscador-cotizador' ), $base_destination );
+			$suggestions[] = sprintf( __( '%s · consulta personalizada', 'plugin-buscador-cotizador' ), $base_destination );
+			$suggestions   = array_values( array_unique( $suggestions ) );
+			$suggestions   = array_slice( $suggestions, 0, 4 );
+		}
+
+		return $suggestions;
+	}
+
+	/**
+	 * Formatea fecha en etiqueta mes + año para sugerencias.
+	 *
+	 * @param string $fecha Fecha ingresada por el usuario.
+	 *
+	 * @return string
+	 */
+	private function format_month_year_label( $fecha ) {
+		$timestamp = strtotime( (string) $fecha );
+
+		if ( false === $timestamp ) {
+			return '';
+		}
+
+		return (string) wp_date( 'F Y', $timestamp );
 	}
 
 	/**
