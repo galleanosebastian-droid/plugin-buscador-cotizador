@@ -51,7 +51,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 						$number_of_days  = absint( get_post_meta( $package_id, 'number_of_days', true ) );
 						$price           = (string) get_post_meta( $package_id, 'price', true );
 						$permalink       = get_permalink( $package_id );
-						$image_html      = get_the_post_thumbnail( $package_id, 'medium', array( 'class' => 'pbc-package-image' ) );
+						$image_html      = $this->get_package_result_image_html( $package_id, $package_title );
 						$inquiry_context = array(
 							'item_name'   => $package_title,
 							'destination' => ! empty( $destination ) ? $destination : $form_data['destino'],
@@ -59,14 +59,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 							'nights'      => $number_of_days > 0 ? $number_of_days : absint( $form_data['noches'] ),
 							'passengers'  => absint( $form_data['pasajeros'] ),
 						);
-
-						if ( empty( $image_html ) ) {
-							$image_html = sprintf(
-								'<img class="pbc-package-image" src="%1$s" alt="%2$s" />',
-								esc_url( PBC_PLUGIN_URL . 'assets/img/package-fallback.svg' ),
-								esc_attr( $package_title )
-							);
-						}
 						?>
 						<article class="pbc-package-card">
 							<div class="pbc-package-media"><?php echo wp_kses_post( $image_html ); ?></div>

@@ -897,6 +897,153 @@ class Plugin_Buscador_Cotizador {
 	}
 
 	/**
+	 * Obtiene el HTML de imagen para la tarjeta de resultados de un paquete.
+	 *
+	 * Prioridad:
+	 * 1) Imagen destacada del paquete.
+	 * 2) Primera imagen válida desde meta package_images.
+	 * 3) Imagen fallback local del plugin.
+	 *
+	 * @param int    $package_id    ID del paquete.
+	 * @param string $package_title Título del paquete para atributo alt.
+	 *
+	 * @return string
+	 */
+	public function get_package_result_image_html( $package_id, $package_title ) {
+		$package_id    = absint( $package_id );
+		$package_title = (string) $package_title;
+
+		$featured_image_html = get_the_post_thumbnail(
+			$package_id,
+			'medium',
+			array( 'class' => 'pbc-package-image' )
+		);
+
+		if ( ! empty( $featured_image_html ) ) {
+			return $featured_image_html;
+		}
+
+		$meta_image = $this->get_first_package_meta_image( $package_id );
+
+		if ( ! empty( $meta_image['attachment_id'] ) ) {
+			$meta_attachment_html = wp_get_attachment_image(
+				absint( $meta_image['attachment_id'] ),
+				'medium',
+				false,
+				array(
+					'class' => 'pbc-package-image',
+					'alt'   => $package_title,
+				)
+			);
+
+			if ( ! empty( $meta_attachment_html ) ) {
+				return $meta_attachment_html;
+			}
+		}
+
+		if ( ! empty( $meta_image['url'] ) ) {
+			return sprintf(
+				'<img class="pbc-package-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" />',
+				esc_url( (string) $meta_image['url'] ),
+				esc_attr( $package_title )
+			);
+		}
+
+		return sprintf(
+			'<img class="pbc-package-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" />',
+			esc_url( PBC_PLUGIN_URL . 'assets/img/package-fallback.svg' ),
+			esc_attr( $package_title )
+		);
+	}
+
+	/**
+	 * Obtiene la primera imagen válida desde el meta package_images.
+	 *
+	 * @param int $package_id ID del paquete.
+	 *
+	 * @return array<string, int|string>
+	 */
+	private function get_first_package_meta_image( $package_id ) {
+		$raw_meta = get_post_meta( $package_id, 'package_images', true );
+
+		if ( empty( $raw_meta ) ) {
+			return array();
+		}
+
+		$items = array();
+
+		if ( is_array( $raw_meta ) ) {
+			$items = $raw_meta;
+		} elseif ( is_string( $raw_meta ) ) {
+			$decoded = json_decode( $raw_meta, true );
+
+			if ( is_array( $decoded ) ) {
+				$items = $decoded;
+			} else {
+				$items = array_filter( array_map( 'trim', explode( ',', $raw_meta ) ) );
+			}
+		}
+
+		foreach ( $items as $item ) {
+			if ( is_numeric( $item ) ) {
+				$attachment_id = absint( $item );
+
+				if ( $attachment_id > 0 ) {
+					return array( 'attachment_id' => $attachment_id );
+				}
+			}
+
+			if ( is_string( $item ) ) {
+				$item = trim( $item );
+
+				if ( '' === $item ) {
+					continue;
+				}
+
+				if ( is_numeric( $item ) ) {
+					$attachment_id = absint( $item );
+
+					if ( $attachment_id > 0 ) {
+						return array( 'attachment_id' => $attachment_id );
+					}
+				}
+
+				if ( filter_var( $item, FILTER_VALIDATE_URL ) ) {
+					return array( 'url' => $item );
+				}
+			}
+
+			if ( is_array( $item ) ) {
+				if ( isset( $item['id'] ) && is_numeric( $item['id'] ) ) {
+					$attachment_id = absint( $item['id'] );
+
+					if ( $attachment_id > 0 ) {
+						return array( 'attachment_id' => $attachment_id );
+					}
+				}
+
+				if ( isset( $item['attachment_id'] ) && is_numeric( $item['attachment_id'] ) ) {
+					$attachment_id = absint( $item['attachment_id'] );
+
+					if ( $attachment_id > 0 ) {
+						return array( 'attachment_id' => $attachment_id );
+					}
+				}
+
+				if ( isset( $item['url'] ) && is_string( $item['url'] ) && filter_var( $item['url'], FILTER_VALIDATE_URL ) ) {
+					return array( 'url' => trim( $item['url'] ) );
+				}
+
+				if ( isset( $item['src'] ) && is_string( $item['src'] ) && filter_var( $item['src'], FILTER_VALIDATE_URL ) ) {
+					return array( 'url' => trim( $item['src'] ) );
+				}
+			}
+		}
+
+		return array();
+	}
+
+	/**
 	 * Formatea fecha en etiqueta mes + año para sugerencias.
 	 *
 	 * @param string $fecha Fecha ingresada por el usuario.
