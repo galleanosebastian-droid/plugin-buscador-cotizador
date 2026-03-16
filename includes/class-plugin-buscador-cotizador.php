@@ -37,6 +37,8 @@ class Plugin_Buscador_Cotizador {
 	 */
 	private function __construct() {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'wp_ajax_pbc_send_email_inquiry', array( $this, 'handle_send_email_inquiry' ) );
+		add_action( 'wp_ajax_nopriv_pbc_send_email_inquiry', array( $this, 'handle_send_email_inquiry' ) );
 		add_shortcode( 'buscador_cotizador', array( $this, 'render_buscador_cotizador_shortcode' ) );
 		add_shortcode( 'buscador_cotizador_demo', array( $this, 'render_demo_shortcode' ) );
 
@@ -283,6 +285,16 @@ class Plugin_Buscador_Cotizador {
 	 */
 	public function render_buscador_cotizador_shortcode() {
 		wp_enqueue_style( 'pbc-styles' );
+		wp_enqueue_script( 'pbc-script' );
+
+		wp_localize_script(
+			'pbc-script',
+			'pbcFrontend',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'pbc_send_email_inquiry' ),
+			)
+		);
 
 		$form_data = array(
 			'destino'   => '',
@@ -522,5 +534,147 @@ class Plugin_Buscador_Cotizador {
 		</div>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Procesa consultas por email enviadas desde el frontend.
+	 *
+	 * @return void
+	 */
+	public function handle_send_email_inquiry() {
+		$nonce = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
+
+		if ( ! wp_verify_nonce( $nonce, 'pbc_send_email_inquiry' ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'No se pudo validar la solicitud. Recargá la página e intentá nuevamente.', 'plugin-buscador-cotizador' ),
+				),
+				403
+			);
+		}
+
+		$client_name   = isset( $_POST['client_name'] ) ? sanitize_text_field( wp_unslash( $_POST['client_name'] ) ) : '';
+		$client_email  = isset( $_POST['client_email'] ) ? sanitize_email( wp_unslash( $_POST['client_email'] ) ) : '';
+		$client_phone  = isset( $_POST['client_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['client_phone'] ) ) : '';
+		$observations  = isset( $_POST['observations'] ) ? sanitize_textarea_field( wp_unslash( $_POST['observations'] ) ) : '';
+		$item_name     = isset( $_POST['item_name'] ) ? sanitize_text_field( wp_unslash( $_POST['item_name'] ) ) : '';
+		$destination   = isset( $_POST['destination'] ) ? sanitize_text_field( wp_unslash( $_POST['destination'] ) ) : '';
+		$date          = isset( $_POST['travel_date'] ) ? sanitize_text_field( wp_unslash( $_POST['travel_date'] ) ) : '';
+		$nights        = isset( $_POST['nights'] ) ? absint( $_POST['nights'] ) : 0;
+		$passengers    = isset( $_POST['passengers'] ) ? absint( $_POST['passengers'] ) : 0;
+
+		if ( '' === $client_name || '' === $client_email || ! is_email( $client_email ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Completá nombre y un email válido para enviar la consulta.', 'plugin-buscador-cotizador' ),
+				),
+				400
+			);
+		}
+
+		$recipient = sanitize_email( (string) get_option( 'pbc_contact_email', '' ) );
+
+		if ( '' === $recipient || ! is_email( $recipient ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'No hay un email de destino configurado en el administrador del plugin.', 'plugin-buscador-cotizador' ),
+				),
+				400
+			);
+		}
+
+		$subject = sprintf(
+			/* translators: %s: package or suggestion name */
+			__( 'Nueva consulta de viaje: %s', 'plugin-buscador-cotizador' ),
+			! empty( $item_name ) ? $item_name : __( 'Consulta general', 'plugin-buscador-cotizador' )
+		);
+
+		$lines = array(
+			__( 'Se recibió una nueva consulta desde el Buscador Cotizador:', 'plugin-buscador-cotizador' ),
+			'',
+			sprintf( __( 'Cliente: %s', 'plugin-buscador-cotizador' ), $client_name ),
+			sprintf( __( 'Email cliente: %s', 'plugin-buscador-cotizador' ), $client_email ),
+			sprintf( __( 'Teléfono: %s', 'plugin-buscador-cotizador' ), ! empty( $client_phone ) ? $client_phone : __( 'No informado', 'plugin-buscador-cotizador' ) ),
+			'',
+			__( 'Detalle de la consulta:', 'plugin-buscador-cotizador' ),
+			sprintf( __( 'Paquete/Sugerencia: %s', 'plugin-buscador-cotizador' ), ! empty( $item_name ) ? $item_name : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Destino: %s', 'plugin-buscador-cotizador' ), ! empty( $destination ) ? $destination : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Fecha: %s', 'plugin-buscador-cotizador' ), ! empty( $date ) ? $date : __( 'No especificada', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Noches: %s', 'plugin-buscador-cotizador' ), $nights > 0 ? (string) $nights : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Pasajeros: %s', 'plugin-buscador-cotizador' ), $passengers > 0 ? (string) $passengers : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			'',
+			sprintf( __( 'Observaciones: %s', 'plugin-buscador-cotizador' ), ! empty( $observations ) ? $observations : __( 'Sin observaciones', 'plugin-buscador-cotizador' ) ),
+		);
+
+		$body = implode( "\n", $lines );
+
+		$headers = array(
+			'Content-Type: text/plain; charset=UTF-8',
+			sprintf( 'Reply-To: %s <%s>', $client_name, $client_email ),
+		);
+
+		$sent = wp_mail( $recipient, $subject, $body, $headers );
+
+		if ( ! $sent ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'No se pudo enviar la consulta. Intentá nuevamente en unos minutos.', 'plugin-buscador-cotizador' ),
+				),
+				500
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'message' => __( 'Consulta enviada correctamente. Te responderemos a la brevedad.', 'plugin-buscador-cotizador' ),
+			)
+		);
+	}
+
+	/**
+	 * Devuelve una URL de WhatsApp usando número configurado y contexto de consulta.
+	 *
+	 * @param array<string, mixed> $inquiry_context Contexto de consulta.
+	 *
+	 * @return string
+	 */
+	public function get_whatsapp_url( $inquiry_context ) {
+		$raw_phone = (string) get_option( 'pbc_whatsapp_number', '' );
+		$phone     = preg_replace( '/\D+/', '', $raw_phone );
+
+		$message = $this->build_whatsapp_message( $inquiry_context );
+		$query   = rawurlencode( $message );
+
+		if ( ! empty( $phone ) ) {
+			return 'https://wa.me/' . $phone . '?text=' . $query;
+		}
+
+		return 'https://wa.me/?text=' . $query;
+	}
+
+	/**
+	 * Construye mensaje prearmado para consultas por WhatsApp.
+	 *
+	 * @param array<string, mixed> $inquiry_context Contexto de consulta.
+	 *
+	 * @return string
+	 */
+	private function build_whatsapp_message( $inquiry_context ) {
+		$item_name  = isset( $inquiry_context['item_name'] ) ? sanitize_text_field( (string) $inquiry_context['item_name'] ) : '';
+		$destination = isset( $inquiry_context['destination'] ) ? sanitize_text_field( (string) $inquiry_context['destination'] ) : '';
+		$date       = isset( $inquiry_context['travel_date'] ) ? sanitize_text_field( (string) $inquiry_context['travel_date'] ) : '';
+		$nights     = isset( $inquiry_context['nights'] ) ? absint( (string) $inquiry_context['nights'] ) : 0;
+		$passengers = isset( $inquiry_context['passengers'] ) ? absint( (string) $inquiry_context['passengers'] ) : 0;
+
+		$lines = array(
+			__( 'Hola, quiero consultar la siguiente opción:', 'plugin-buscador-cotizador' ),
+			sprintf( __( 'Paquete/Sugerencia: %s', 'plugin-buscador-cotizador' ), ! empty( $item_name ) ? $item_name : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Destino: %s', 'plugin-buscador-cotizador' ), ! empty( $destination ) ? $destination : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Fecha: %s', 'plugin-buscador-cotizador' ), ! empty( $date ) ? $date : __( 'No especificada', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Noches: %s', 'plugin-buscador-cotizador' ), $nights > 0 ? (string) $nights : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+			sprintf( __( 'Pasajeros: %s', 'plugin-buscador-cotizador' ), $passengers > 0 ? (string) $passengers : __( 'No especificado', 'plugin-buscador-cotizador' ) ),
+		);
+
+		return implode( "\n", $lines );
 	}
 }
