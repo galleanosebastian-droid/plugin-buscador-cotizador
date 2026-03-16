@@ -276,3 +276,13 @@
 .pbc-modal-open {
   overflow: hidden;
 }
+
+.pbc-search-loading {
+  margin-top: 1.2rem;
+  padding: 0.85rem;
+  border: 1px solid #d0d9e6;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 600;
+}
