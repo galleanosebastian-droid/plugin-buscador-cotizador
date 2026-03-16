@@ -73,9 +73,13 @@ class Plugin_Buscador_Cotizador {
 
 		$sql = "CREATE TABLE {$table_name} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-			geoname_id bigint(20) unsigned NOT NULL,
+			record_type varchar(20) NOT NULL DEFAULT 'city',
+			external_id varchar(120) NOT NULL,
+			source_type varchar(40) NOT NULL DEFAULT 'cities1000',
+			geoname_id bigint(20) unsigned DEFAULT NULL,
 			name varchar(200) NOT NULL,
 			ascii_name varchar(200) NOT NULL,
+			alternate_names longtext NULL,
 			country_code varchar(2) NOT NULL,
 			admin1_code varchar(20) NOT NULL,
 			admin2_code varchar(80) NOT NULL,
@@ -86,9 +90,11 @@ class Plugin_Buscador_Cotizador {
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY  (id),
-			UNIQUE KEY geoname_id (geoname_id),
+			UNIQUE KEY unique_record (record_type,external_id),
+			KEY geoname_id (geoname_id),
 			KEY search_name (search_name),
 			KEY country_code (country_code),
+			KEY record_type (record_type),
 			KEY population (population)
 		) {$charset_collate};";
 
@@ -119,7 +125,20 @@ class Plugin_Buscador_Cotizador {
 		self::create_destinations_table();
 
 		$table_name = self::get_destinations_table_name();
-		$handle     = fopen( $file_path, 'r' );
+		$detected_type = $this->detect_import_file_type( $file_path );
+
+		if ( '' === $detected_type ) {
+			return array(
+				'imported'      => 0,
+				'updated'       => 0,
+				'skipped'       => 0,
+				'errors'        => 1,
+				'detected_type' => '',
+				'message'       => __( 'No se pudo detectar el tipo de archivo de GeoNames.', 'plugin-buscador-cotizador' ),
+			);
+		}
+
+		$handle = fopen( $file_path, 'r' );
 
 		if ( false === $handle ) {
 			return array(
@@ -137,47 +156,29 @@ class Plugin_Buscador_Cotizador {
 		$errors   = 0;
 
 		while ( ( $line = fgets( $handle ) ) !== false ) {
-			$columns = $this->parse_destinations_line( $line );
+			$record = $this->parse_destination_record( $line, $detected_type );
 
-			if ( empty( $columns ) ) {
+			if ( null === $record ) {
 				continue;
 			}
 
-			if ( count( $columns ) < 15 ) {
+			if ( false === $record ) {
 				++$skipped;
 				continue;
 			}
-
-			if ( 'P' !== (string) $columns[6] ) {
-				continue;
-			}
-
-			$geoname_id = absint( $columns[0] );
-			$name       = sanitize_text_field( (string) $columns[1] );
-			$ascii_name = sanitize_text_field( (string) $columns[2] );
-			$latitude   = (float) $columns[4];
-			$longitude  = (float) $columns[5];
-			$country    = sanitize_text_field( (string) $columns[8] );
-			$admin1     = sanitize_text_field( (string) $columns[10] );
-			$admin2     = sanitize_text_field( (string) $columns[11] );
-			$population = isset( $columns[14] ) ? max( 0, (int) $columns[14] ) : 0;
-
-			if ( 0 === $geoname_id || '' === $name || '' === $country ) {
-				++$skipped;
-				continue;
-			}
-
-			$search_name = strtolower( remove_accents( $ascii_name ? $ascii_name : $name ) );
 
 			$result = $wpdb->query(
 				$wpdb->prepare(
 					"INSERT INTO {$table_name}
-						(geoname_id, name, ascii_name, country_code, admin1_code, admin2_code, latitude, longitude, population, search_name)
+						(record_type, external_id, source_type, geoname_id, name, ascii_name, alternate_names, country_code, admin1_code, admin2_code, latitude, longitude, population, search_name)
 					VALUES
-						(%d, %s, %s, %s, %s, %s, %f, %f, %d, %s)
+						(%s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %f, %f, %d, %s)
 					ON DUPLICATE KEY UPDATE
+						source_type = VALUES(source_type),
+						geoname_id = VALUES(geoname_id),
 						name = VALUES(name),
 						ascii_name = VALUES(ascii_name),
+						alternate_names = VALUES(alternate_names),
 						country_code = VALUES(country_code),
 						admin1_code = VALUES(admin1_code),
 						admin2_code = VALUES(admin2_code),
@@ -185,16 +186,20 @@ class Plugin_Buscador_Cotizador {
 						longitude = VALUES(longitude),
 						population = VALUES(population),
 						search_name = VALUES(search_name)",
-					$geoname_id,
-					$name,
-					$ascii_name,
-					$country,
-					$admin1,
-					$admin2,
-					$latitude,
-					$longitude,
-					$population,
-					$search_name
+					$record['record_type'],
+					$record['external_id'],
+					$record['source_type'],
+					$record['geoname_id'],
+					$record['name'],
+					$record['ascii_name'],
+					$record['alternate_names'],
+					$record['country_code'],
+					$record['admin1_code'],
+					$record['admin2_code'],
+					$record['latitude'],
+					$record['longitude'],
+					$record['population'],
+					$record['search_name']
 				)
 			);
 
@@ -213,12 +218,71 @@ class Plugin_Buscador_Cotizador {
 		fclose( $handle );
 
 		return array(
-			'imported' => $imported,
-			'updated'  => $updated,
-			'skipped'  => $skipped,
-			'errors'   => $errors,
-			'message'  => __( 'Importación finalizada.', 'plugin-buscador-cotizador' ),
+			'imported'      => $imported,
+			'updated'       => $updated,
+			'skipped'       => $skipped,
+			'errors'        => $errors,
+			'detected_type' => $detected_type,
+			'message'       => __( 'Importación finalizada.', 'plugin-buscador-cotizador' ),
 		);
+	}
+
+	/**
+	 * Detecta el tipo de archivo de GeoNames subido.
+	 *
+	 * @param string $file_path Ruta del archivo temporal.
+	 *
+	 * @return string
+	 */
+	private function detect_import_file_type( $file_path ) {
+		$file_name = isset( $_FILES['pbc_destinations_file']['name'] ) ? strtolower( sanitize_text_field( (string) $_FILES['pbc_destinations_file']['name'] ) ) : '';
+
+		if ( false !== strpos( $file_name, 'countryinfo' ) ) {
+			return 'countryInfo';
+		}
+
+		if ( false !== strpos( $file_name, 'admin1codesascii' ) ) {
+			return 'admin1CodesASCII';
+		}
+
+		if ( false !== strpos( $file_name, 'cities1000' ) ) {
+			return 'cities1000';
+		}
+
+		$handle = fopen( $file_path, 'r' );
+
+		if ( false === $handle ) {
+			return '';
+		}
+
+		$detected_type = '';
+
+		while ( ( $line = fgets( $handle ) ) !== false ) {
+			$columns = $this->parse_destinations_line( $line );
+
+			if ( empty( $columns ) ) {
+				continue;
+			}
+
+			if ( isset( $columns[0] ) && preg_match( '/^[A-Z]{2}\./', (string) $columns[0] ) && isset( $columns[3] ) && is_numeric( $columns[3] ) ) {
+				$detected_type = 'admin1CodesASCII';
+				break;
+			}
+
+			if ( isset( $columns[6] ) && isset( $columns[0] ) && is_numeric( $columns[0] ) && in_array( (string) $columns[6], array( 'P', 'A' ), true ) ) {
+				$detected_type = 'cities1000';
+				break;
+			}
+
+			if ( isset( $columns[0] ) && isset( $columns[8] ) && preg_match( '/^[A-Z]{2}$/', (string) $columns[0] ) && is_numeric( $columns[8] ) ) {
+				$detected_type = 'countryInfo';
+				break;
+			}
+		}
+
+		fclose( $handle );
+
+		return $detected_type;
 	}
 
 	/**
@@ -231,7 +295,7 @@ class Plugin_Buscador_Cotizador {
 	private function parse_destinations_line( $line ) {
 		$line = trim( (string) $line );
 
-		if ( '' === $line ) {
+		if ( '' === $line || 0 === strpos( $line, '#' ) ) {
 			return array();
 		}
 
@@ -242,6 +306,127 @@ class Plugin_Buscador_Cotizador {
 		}
 
 		return is_array( $columns ) ? $columns : array();
+	}
+
+	/**
+	 * Parsea una línea según el tipo detectado.
+	 *
+	 * @param string $line        Línea actual.
+	 * @param string $source_type Tipo de archivo detectado.
+	 *
+	 * @return array<string, mixed>|false|null
+	 */
+	private function parse_destination_record( $line, $source_type ) {
+		$columns = $this->parse_destinations_line( $line );
+
+		if ( empty( $columns ) ) {
+			return null;
+		}
+
+		if ( 'cities1000' === $source_type ) {
+			if ( count( $columns ) < 15 || 'P' !== (string) $columns[6] ) {
+				return false;
+			}
+
+			$geoname_id = absint( $columns[0] );
+			$name       = sanitize_text_field( (string) $columns[1] );
+			$ascii_name = sanitize_text_field( (string) $columns[2] );
+			$country    = sanitize_text_field( (string) $columns[8] );
+			$admin1     = sanitize_text_field( (string) $columns[10] );
+			$admin2     = sanitize_text_field( (string) $columns[11] );
+
+			if ( 0 === $geoname_id || '' === $name || '' === $country ) {
+				return false;
+			}
+
+			return array(
+				'record_type'     => 'city',
+				'external_id'     => 'city:' . $geoname_id,
+				'source_type'     => $source_type,
+				'geoname_id'      => $geoname_id,
+				'name'            => $name,
+				'ascii_name'      => $ascii_name,
+				'alternate_names' => sanitize_text_field( (string) $columns[3] ),
+				'country_code'    => $country,
+				'admin1_code'     => $admin1,
+				'admin2_code'     => $admin2,
+				'latitude'        => (float) $columns[4],
+				'longitude'       => (float) $columns[5],
+				'population'      => isset( $columns[14] ) ? max( 0, (int) $columns[14] ) : 0,
+				'search_name'     => strtolower( remove_accents( $ascii_name ? $ascii_name : $name ) ),
+			);
+		}
+
+		if ( 'countryInfo' === $source_type ) {
+			if ( count( $columns ) < 9 ) {
+				return false;
+			}
+
+			$country_code = sanitize_text_field( (string) $columns[0] );
+			$name         = sanitize_text_field( (string) $columns[4] );
+			$ascii_name   = sanitize_text_field( (string) $columns[5] );
+
+			if ( '' === $country_code || '' === $name ) {
+				return false;
+			}
+
+			$geoname_id = isset( $columns[16] ) ? absint( $columns[16] ) : 0;
+
+			return array(
+				'record_type'     => 'country',
+				'external_id'     => 'country:' . $country_code,
+				'source_type'     => $source_type,
+				'geoname_id'      => $geoname_id,
+				'name'            => $name,
+				'ascii_name'      => $ascii_name,
+				'alternate_names' => '',
+				'country_code'    => $country_code,
+				'admin1_code'     => '',
+				'admin2_code'     => '',
+				'latitude'        => 0,
+				'longitude'       => 0,
+				'population'      => 0,
+				'search_name'     => strtolower( remove_accents( $ascii_name ? $ascii_name : $name ) ),
+			);
+		}
+
+		if ( count( $columns ) < 4 ) {
+			return false;
+		}
+
+		$admin1_code = sanitize_text_field( (string) $columns[0] );
+		$name        = sanitize_text_field( (string) $columns[1] );
+		$ascii_name  = sanitize_text_field( (string) $columns[2] );
+
+		if ( '' === $admin1_code || '' === $name ) {
+			return false;
+		}
+
+		$country_code = '';
+		$code_parts   = explode( '.', $admin1_code );
+
+		if ( ! empty( $code_parts[0] ) ) {
+			$country_code = sanitize_text_field( (string) $code_parts[0] );
+		}
+
+		$geoname_id = absint( $columns[3] );
+
+		return array(
+			'record_type'     => 'admin1',
+			'external_id'     => 'admin1:' . $admin1_code,
+			'source_type'     => $source_type,
+			'geoname_id'      => $geoname_id,
+			'name'            => $name,
+			'ascii_name'      => $ascii_name,
+			'alternate_names' => '',
+			'country_code'    => $country_code,
+			'admin1_code'     => $admin1_code,
+			'admin2_code'     => '',
+			'latitude'        => 0,
+			'longitude'       => 0,
+			'population'      => 0,
+			'search_name'     => strtolower( remove_accents( $ascii_name ? $ascii_name : $name ) ),
+		);
 	}
 
 	/**
@@ -266,10 +451,18 @@ class Plugin_Buscador_Cotizador {
 		$like_term  = '%' . $wpdb->esc_like( $search_term ) . '%';
 
 		$query = $wpdb->prepare(
-			"SELECT geoname_id, name, ascii_name, country_code, admin1_code, admin2_code, latitude, longitude, population
+			"SELECT geoname_id, name, ascii_name, country_code, admin1_code, admin2_code, latitude, longitude, population, record_type
 			FROM {$table_name}
 			WHERE search_name LIKE %s
-			ORDER BY population DESC, name ASC
+			ORDER BY
+				CASE record_type
+					WHEN 'city' THEN 1
+					WHEN 'admin1' THEN 2
+					WHEN 'country' THEN 3
+					ELSE 4
+				END ASC,
+				population DESC,
+				name ASC
 			LIMIT %d",
 			$like_term,
 			$limit
@@ -543,14 +736,23 @@ class Plugin_Buscador_Cotizador {
 		foreach ( $matches as $match ) {
 			$name         = isset( $match['name'] ) ? (string) $match['name'] : '';
 			$country_code = isset( $match['country_code'] ) ? (string) $match['country_code'] : '';
+			$record_type  = isset( $match['record_type'] ) ? (string) $match['record_type'] : 'city';
 
 			if ( '' === $name ) {
 				continue;
 			}
 
+			$type_labels = array(
+				'city'    => __( 'Ciudad', 'plugin-buscador-cotizador' ),
+				'admin1'  => __( 'Región', 'plugin-buscador-cotizador' ),
+				'country' => __( 'País', 'plugin-buscador-cotizador' ),
+			);
+
+			$type_label = isset( $type_labels[ $record_type ] ) ? $type_labels[ $record_type ] : __( 'Destino', 'plugin-buscador-cotizador' );
+
 			$items[] = array(
 				'value' => $name,
-				'label' => '' !== $country_code ? sprintf( '%s (%s)', $name, $country_code ) : $name,
+				'label' => '' !== $country_code ? sprintf( '%s (%s · %s)', $name, $country_code, $type_label ) : sprintf( '%s (%s)', $name, $type_label ),
 			);
 		}
 

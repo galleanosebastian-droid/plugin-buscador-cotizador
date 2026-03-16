@@ -152,13 +152,15 @@ class PBC_Admin {
 		}
 
 		$import_result = $this->plugin->import_destinations_from_uploaded_file( $file['tmp_name'] );
+		$detected_type = isset( $import_result['detected_type'] ) ? sanitize_text_field( (string) $import_result['detected_type'] ) : __( 'desconocido', 'plugin-buscador-cotizador' );
 
 		if ( ! empty( $import_result['errors'] ) ) {
 			$this->redirect_import_page(
 				'error',
 				sprintf(
-					/* translators: 1: imported count, 2: updated count, 3: skipped count, 4: errors count */
-					__( 'Importación con errores. Importados: %1$d, Actualizados: %2$d, Omitidos: %3$d, Errores: %4$d.', 'plugin-buscador-cotizador' ),
+					/* translators: 1: detected type, 2: imported count, 3: updated count, 4: skipped count, 5: errors count */
+					__( 'Importación con errores (%1$s). Importados: %2$d, Actualizados: %3$d, Omitidos: %4$d, Errores: %5$d.', 'plugin-buscador-cotizador' ),
+					$detected_type,
 					(int) $import_result['imported'],
 					(int) $import_result['updated'],
 					(int) $import_result['skipped'],
@@ -170,8 +172,9 @@ class PBC_Admin {
 		$this->redirect_import_page(
 			'success',
 			sprintf(
-				/* translators: 1: imported count, 2: updated count, 3: skipped count */
-				__( 'Importación completada. Importados: %1$d, Actualizados: %2$d, Omitidos: %3$d.', 'plugin-buscador-cotizador' ),
+				/* translators: 1: detected type, 2: imported count, 3: updated count, 4: skipped count */
+				__( 'Importación completada (%1$s). Importados: %2$d, Actualizados: %3$d, Omitidos: %4$d.', 'plugin-buscador-cotizador' ),
+				$detected_type,
 				(int) $import_result['imported'],
 				(int) $import_result['updated'],
 				(int) $import_result['skipped']
