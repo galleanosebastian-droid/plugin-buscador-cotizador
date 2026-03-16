@@ -38,6 +38,8 @@ function pbc_activate_plugin() {
 		deactivate_plugins( plugin_basename( __FILE__ ) );
 		wp_die( esc_html__( 'Plugin Buscador Cotizador requiere WordPress 6.0 o superior.', 'plugin-buscador-cotizador' ) );
 	}
+
+	Plugin_Buscador_Cotizador::create_destinations_table();
 }
 register_activation_hook( __FILE__, 'pbc_activate_plugin' );
 
