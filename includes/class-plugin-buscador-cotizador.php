@@ -55,6 +55,7 @@ class Plugin_Buscador_Cotizador {
 		);
 
 		$form_submitted = false;
+		$search_result  = null;
 
 		if ( isset( $_POST['pbc_form_submitted'] ) ) {
 			$form_data['destino']   = isset( $_POST['pbc_destino'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_destino'] ) ) : '';
@@ -62,12 +63,167 @@ class Plugin_Buscador_Cotizador {
 			$form_data['noches']    = isset( $_POST['pbc_noches'] ) ? absint( $_POST['pbc_noches'] ) : '';
 			$form_data['pasajeros'] = isset( $_POST['pbc_pasajeros'] ) ? absint( $_POST['pbc_pasajeros'] ) : '';
 			$form_submitted         = true;
+			$search_result          = $this->search_wtp_packages( $form_data );
 		}
 
 		ob_start();
 		require PBC_PLUGIN_PATH . 'includes/views/shortcode-buscador-cotizador.php';
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Busca paquetes del plugin wordpress-tourism-plugin con estrategia de fallback por capas.
+	 *
+	 * @param array<string, int|string> $form_data Datos del formulario.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function search_wtp_packages( $form_data ) {
+		$destino = trim( (string) $form_data['destino'] );
+		$fecha   = (string) $form_data['fecha'];
+		$noches  = absint( (string) $form_data['noches'] );
+
+		$layers = array(
+			'estricta'       => array(
+				'include_date'       => true,
+				'include_duration'   => true,
+				'flex_destination'   => false,
+				'message'            => __( 'Resultados exactos para tu búsqueda.', 'plugin-buscador-cotizador' ),
+			),
+			'relajar_fecha'  => array(
+				'include_date'       => false,
+				'include_duration'   => true,
+				'flex_destination'   => false,
+				'message'            => __( 'No hubo coincidencias exactas de fecha. Mostramos opciones con fechas alternativas.', 'plugin-buscador-cotizador' ),
+			),
+			'relajar_noches' => array(
+				'include_date'       => false,
+				'include_duration'   => false,
+				'flex_destination'   => false,
+				'message'            => __( 'No hubo coincidencias exactas de duración. Mostramos opciones del destino seleccionado.', 'plugin-buscador-cotizador' ),
+			),
+			'destino_flex'   => array(
+				'include_date'       => false,
+				'include_duration'   => false,
+				'flex_destination'   => true,
+				'message'            => __( 'Mostramos opciones por búsqueda flexible de destino.', 'plugin-buscador-cotizador' ),
+			),
+		);
+
+		foreach ( $layers as $layer_key => $layer_config ) {
+			$posts = $this->run_packages_query( $destino, $fecha, $noches, $layer_config );
+
+			if ( ! empty( $posts ) ) {
+				return array(
+					'layer'         => $layer_key,
+					'message'       => $layer_config['message'],
+					'posts'         => $posts,
+					'suggestions'   => array(),
+				);
+			}
+		}
+
+		return array(
+			'layer'       => 'sin_resultados',
+			'message'     => __( 'No encontramos paquetes disponibles con los criterios ingresados.', 'plugin-buscador-cotizador' ),
+			'posts'       => array(),
+			'suggestions' => $this->build_suggestions( $destino ),
+		);
+	}
+
+	/**
+	 * Ejecuta WP_Query para paquetes turísticos con filtros por metadatos.
+	 *
+	 * @param string              $destino      Destino ingresado.
+	 * @param string              $fecha        Fecha ingresada.
+	 * @param int                 $noches       Noches ingresadas.
+	 * @param array<string,mixed> $layer_config Configuración de capa de fallback.
+	 *
+	 * @return array<int, WP_Post>
+	 */
+	private function run_packages_query( $destino, $fecha, $noches, $layer_config ) {
+		$meta_query = array(
+			'relation' => 'AND',
+		);
+
+		if ( ! empty( $destino ) ) {
+			$meta_query[] = array(
+				'key'     => 'destination',
+				'value'   => $this->get_destination_value_for_query( $destino, ! empty( $layer_config['flex_destination'] ) ),
+				'compare' => 'LIKE',
+			);
+		}
+
+		if ( ! empty( $layer_config['include_date'] ) && ! empty( $fecha ) ) {
+			$meta_query[] = array(
+				'key'     => 'departure_date',
+				'value'   => $fecha,
+				'compare' => '>=',
+				'type'    => 'DATE',
+			);
+		}
+
+		if ( ! empty( $layer_config['include_duration'] ) && $noches > 0 ) {
+			$meta_query[] = array(
+				'key'     => 'number_of_days',
+				'value'   => $noches,
+				'compare' => '>=',
+				'type'    => 'NUMERIC',
+			);
+		}
+
+		$query_args = array(
+			'post_type'      => 'wtp_package',
+			'post_status'    => 'publish',
+			'posts_per_page' => 6,
+			'meta_query'     => $meta_query,
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+		);
+
+		$query = new WP_Query( $query_args );
+
+		return $query->posts;
+	}
+
+	/**
+	 * Obtiene valor de destino para búsqueda base/flexible.
+	 *
+	 * @param string $destino Destino ingresado.
+	 * @param bool   $flex    Si se aplica fallback flexible.
+	 *
+	 * @return string
+	 */
+	private function get_destination_value_for_query( $destino, $flex ) {
+		if ( ! $flex ) {
+			return $destino;
+		}
+
+		$parts = preg_split( '/\s+/', trim( $destino ) );
+
+		if ( is_array( $parts ) && ! empty( $parts[0] ) ) {
+			return (string) $parts[0];
+		}
+
+		return $destino;
+	}
+
+	/**
+	 * Genera sugerencias automáticas cuando no hay resultados.
+	 *
+	 * @param string $destino Destino ingresado por el usuario.
+	 *
+	 * @return array<int, string>
+	 */
+	private function build_suggestions( $destino ) {
+		$base_destination = ! empty( $destino ) ? $destino : __( 'Tu destino', 'plugin-buscador-cotizador' );
+
+		return array(
+			sprintf( __( '%s · 3 noches · abril', 'plugin-buscador-cotizador' ), $base_destination ),
+			sprintf( __( '%s · otras fechas', 'plugin-buscador-cotizador' ), $base_destination ),
+			sprintf( __( '%s · consulta personalizada', 'plugin-buscador-cotizador' ), $base_destination ),
+		);
 	}
 
 	/**
