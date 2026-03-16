@@ -9,6 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once PBC_PLUGIN_PATH . 'includes/admin/class-pbc-admin.php';
+
 class Plugin_Buscador_Cotizador {
 	/**
 	 * Instancia única.
@@ -37,6 +39,10 @@ class Plugin_Buscador_Cotizador {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_shortcode( 'buscador_cotizador', array( $this, 'render_buscador_cotizador_shortcode' ) );
 		add_shortcode( 'buscador_cotizador_demo', array( $this, 'render_demo_shortcode' ) );
+
+		if ( is_admin() ) {
+			new PBC_Admin( $this );
+		}
 	}
 
 	/**
@@ -47,7 +53,7 @@ class Plugin_Buscador_Cotizador {
 	private static function get_destinations_table_name() {
 		global $wpdb;
 
-		return $wpdb->prefix . 'pbc_destinations';
+		return $wpdb->prefix . 'buscador_destinos';
 	}
 
 	/**
@@ -87,22 +93,22 @@ class Plugin_Buscador_Cotizador {
 	}
 
 	/**
-	 * Importa destinos desde /data/cities1000.txt de forma manual.
+	 * Importa destinos desde archivo subido por administrador.
+	 *
+	 * @param string $file_path Ruta temporal del archivo.
 	 *
 	 * @return array<string, int|string>
 	 */
-	public function import_destinations_from_geonames_file() {
+	public function import_destinations_from_uploaded_file( $file_path ) {
 		global $wpdb;
 
-		$file_path = PBC_PLUGIN_PATH . 'data/cities1000.txt';
-
-		if ( ! file_exists( $file_path ) ) {
+		if ( empty( $file_path ) || ! file_exists( $file_path ) ) {
 			return array(
 				'imported' => 0,
 				'updated'  => 0,
 				'skipped'  => 0,
 				'errors'   => 1,
-				'message'  => __( 'No se encontró el archivo /data/cities1000.txt.', 'plugin-buscador-cotizador' ),
+				'message'  => __( 'No se encontró el archivo a importar.', 'plugin-buscador-cotizador' ),
 			);
 		}
 
@@ -117,7 +123,7 @@ class Plugin_Buscador_Cotizador {
 				'updated'  => 0,
 				'skipped'  => 0,
 				'errors'   => 1,
-				'message'  => __( 'No se pudo abrir el archivo cities1000.txt.', 'plugin-buscador-cotizador' ),
+				'message'  => __( 'No se pudo abrir el archivo subido.', 'plugin-buscador-cotizador' ),
 			);
 		}
 
@@ -127,13 +133,11 @@ class Plugin_Buscador_Cotizador {
 		$errors   = 0;
 
 		while ( ( $line = fgets( $handle ) ) !== false ) {
-			$line = trim( $line );
+			$columns = $this->parse_destinations_line( $line );
 
-			if ( '' === $line ) {
+			if ( empty( $columns ) ) {
 				continue;
 			}
-
-			$columns = explode( "\t", $line );
 
 			if ( count( $columns ) < 15 ) {
 				++$skipped;
@@ -211,6 +215,29 @@ class Plugin_Buscador_Cotizador {
 			'errors'   => $errors,
 			'message'  => __( 'Importación finalizada.', 'plugin-buscador-cotizador' ),
 		);
+	}
+
+	/**
+	 * Convierte una línea en columnas del importador.
+	 *
+	 * @param string $line Línea del archivo.
+	 *
+	 * @return array<int, string>
+	 */
+	private function parse_destinations_line( $line ) {
+		$line = trim( (string) $line );
+
+		if ( '' === $line ) {
+			return array();
+		}
+
+		$columns = explode( "\t", $line );
+
+		if ( count( $columns ) < 15 ) {
+			$columns = str_getcsv( $line );
+		}
+
+		return is_array( $columns ) ? $columns : array();
 	}
 
 	/**
