@@ -13,7 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	<h3 class="pbc-search-heading"><?php esc_html_e( 'Encontrá tu próximo viaje', 'plugin-buscador-cotizador' ); ?></h3>
 	<form class="pbc-search-form" method="post">
 		<div class="pbc-search-column pbc-search-column-destino">
-			<input id="pbc-destino" name="pbc_destino" type="text" value="<?php echo esc_attr( $form_data['destino'] ); ?>" placeholder="<?php esc_attr_e( 'Destino', 'plugin-buscador-cotizador' ); ?>" autocomplete="off" required />
+			<input id="pbc-destino" name="pbc_destino" type="text" value="<?php echo esc_attr( $form_data['destino'] ); ?>" placeholder="<?php esc_attr_e( 'Destino', 'plugin-buscador-cotizador' ); ?>" autocomplete="off" list="pbc-destino-suggestions" required />
+			<datalist id="pbc-destino-suggestions"></datalist>
 		</div>
 
 		<div class="pbc-search-column pbc-search-column-fecha">

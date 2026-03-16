@@ -39,6 +39,8 @@ class Plugin_Buscador_Cotizador {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'wp_ajax_pbc_send_email_inquiry', array( $this, 'handle_send_email_inquiry' ) );
 		add_action( 'wp_ajax_nopriv_pbc_send_email_inquiry', array( $this, 'handle_send_email_inquiry' ) );
+		add_action( 'wp_ajax_pbc_destination_suggestions', array( $this, 'handle_destination_suggestions' ) );
+		add_action( 'wp_ajax_nopriv_pbc_destination_suggestions', array( $this, 'handle_destination_suggestions' ) );
 		add_shortcode( 'buscador_cotizador', array( $this, 'render_buscador_cotizador_shortcode' ) );
 		add_shortcode( 'buscador_cotizador_demo', array( $this, 'render_demo_shortcode' ) );
 
@@ -293,6 +295,7 @@ class Plugin_Buscador_Cotizador {
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( 'pbc_send_email_inquiry' ),
+				'destinationNonce' => wp_create_nonce( 'pbc_destination_suggestions' ),
 			)
 		);
 
@@ -329,9 +332,11 @@ class Plugin_Buscador_Cotizador {
 	 * @return array<string, mixed>
 	 */
 	private function search_wtp_packages( $form_data ) {
-		$destino = trim( (string) $form_data['destino'] );
-		$fecha   = (string) $form_data['fecha'];
-		$noches  = absint( (string) $form_data['noches'] );
+		$destino_input   = trim( (string) $form_data['destino'] );
+		$resolved_result = $this->resolve_destination_from_imported( $destino_input );
+		$destino_query   = ! empty( $resolved_result['resolved_destination'] ) ? (string) $resolved_result['resolved_destination'] : $destino_input;
+		$fecha           = (string) $form_data['fecha'];
+		$noches          = absint( (string) $form_data['noches'] );
 
 		$layers = array(
 			'estricta'       => array(
@@ -361,23 +366,198 @@ class Plugin_Buscador_Cotizador {
 		);
 
 		foreach ( $layers as $layer_key => $layer_config ) {
-			$posts = $this->run_packages_query( $destino, $fecha, $noches, $layer_config );
+			$posts = $this->run_packages_query( $destino_query, $fecha, $noches, $layer_config );
 
 			if ( ! empty( $posts ) ) {
+				$message = (string) $layer_config['message'];
+
+				if ( ! empty( $resolved_result['note'] ) ) {
+					$message .= ' ' . (string) $resolved_result['note'];
+				}
+
 				return array(
 					'layer'         => $layer_key,
-					'message'       => $layer_config['message'],
+					'message'       => $message,
 					'posts'         => $posts,
 					'suggestions'   => array(),
 				);
 			}
 		}
 
+		$empty_message = __( 'No encontramos paquetes disponibles con los criterios ingresados.', 'plugin-buscador-cotizador' );
+
+		if ( ! empty( $resolved_result['note'] ) ) {
+			$empty_message .= ' ' . (string) $resolved_result['note'];
+		}
+
 		return array(
 			'layer'       => 'sin_resultados',
-			'message'     => __( 'No encontramos paquetes disponibles con los criterios ingresados.', 'plugin-buscador-cotizador' ),
+			'message'     => $empty_message,
 			'posts'       => array(),
-			'suggestions' => $this->build_suggestions( $destino ),
+			'suggestions' => $this->build_suggestions( $destino_input ),
+		);
+	}
+
+	/**
+	 * Resuelve el destino ingresado contra la base importada y aplica corrección sólo con confianza alta.
+	 *
+	 * @param string $destino_input Destino escrito por el usuario.
+	 *
+	 * @return array<string, string>
+	 */
+	private function resolve_destination_from_imported( $destino_input ) {
+		$destino_input = trim( (string) $destino_input );
+
+		if ( '' === $destino_input ) {
+			return array(
+				'resolved_destination' => '',
+				'note'                 => '',
+			);
+		}
+
+		$normalized_input = $this->normalize_destination_text( $destino_input );
+
+		if ( '' === $normalized_input ) {
+			return array(
+				'resolved_destination' => $destino_input,
+				'note'                 => '',
+			);
+		}
+
+		$candidates = $this->get_imported_destinations( $destino_input, 15 );
+
+		if ( empty( $candidates ) ) {
+			return array(
+				'resolved_destination' => $destino_input,
+				'note'                 => '',
+			);
+		}
+
+		$best_candidate = null;
+		$best_score     = -1;
+
+		foreach ( $candidates as $candidate ) {
+			$candidate_name = isset( $candidate['name'] ) ? (string) $candidate['name'] : '';
+
+			if ( '' === $candidate_name ) {
+				continue;
+			}
+
+			$normalized_candidate = $this->normalize_destination_text( $candidate_name );
+
+			if ( '' === $normalized_candidate ) {
+				continue;
+			}
+
+			if ( $normalized_candidate === $normalized_input ) {
+				return array(
+					'resolved_destination' => $candidate_name,
+					'note'                 => '',
+				);
+			}
+
+			$distance = levenshtein( $normalized_input, $normalized_candidate );
+			$max_len  = max( strlen( $normalized_input ), strlen( $normalized_candidate ) );
+			$score    = $max_len > 0 ? 1 - ( $distance / $max_len ) : 0;
+
+			if ( $score > $best_score ) {
+				$best_score     = $score;
+				$best_candidate = $candidate;
+			}
+		}
+
+		if ( empty( $best_candidate ) || ! isset( $best_candidate['name'] ) ) {
+			return array(
+				'resolved_destination' => $destino_input,
+				'note'                 => '',
+			);
+		}
+
+		$input_length = strlen( $normalized_input );
+		$threshold    = $input_length <= 5 ? 0.86 : 0.78;
+
+		if ( $best_score < $threshold ) {
+			return array(
+				'resolved_destination' => $destino_input,
+				'note'                 => '',
+			);
+		}
+
+		$resolved_destination = (string) $best_candidate['name'];
+
+		return array(
+			'resolved_destination' => $resolved_destination,
+			'note'                 => sprintf(
+				/* translators: 1: entered destination, 2: corrected destination. */
+				__( 'Interpretamos "%1$s" como "%2$s" para mejorar la búsqueda.', 'plugin-buscador-cotizador' ),
+				$destino_input,
+				$resolved_destination
+			),
+		);
+	}
+
+	/**
+	 * Normaliza un texto para comparar destinos.
+	 *
+	 * @param string $value Valor de texto a normalizar.
+	 *
+	 * @return string
+	 */
+	private function normalize_destination_text( $value ) {
+		$value = strtolower( remove_accents( sanitize_text_field( (string) $value ) ) );
+		$value = preg_replace( '/\s+/', ' ', $value );
+
+		return trim( (string) $value );
+	}
+
+	/**
+	 * Endpoint AJAX para autocompletar destinos importados.
+	 *
+	 * @return void
+	 */
+	public function handle_destination_suggestions() {
+		$nonce = isset( $_GET['nonce'] ) ? sanitize_text_field( wp_unslash( $_GET['nonce'] ) ) : '';
+
+		if ( ! wp_verify_nonce( $nonce, 'pbc_destination_suggestions' ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'No se pudo validar la búsqueda de destinos.', 'plugin-buscador-cotizador' ),
+				),
+				403
+			);
+		}
+
+		$term    = isset( $_GET['term'] ) ? sanitize_text_field( wp_unslash( $_GET['term'] ) ) : '';
+		$matches = $this->get_imported_destinations( $term, 8 );
+
+		if ( empty( $matches ) ) {
+			wp_send_json_success(
+				array(
+					'items' => array(),
+				)
+			);
+		}
+
+		$items = array();
+
+		foreach ( $matches as $match ) {
+			$name         = isset( $match['name'] ) ? (string) $match['name'] : '';
+			$country_code = isset( $match['country_code'] ) ? (string) $match['country_code'] : '';
+
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$items[] = array(
+				'value' => $name,
+				'label' => '' !== $country_code ? sprintf( '%s (%s)', $name, $country_code ) : $name,
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'items' => $items,
+			)
 		);
 	}
 
