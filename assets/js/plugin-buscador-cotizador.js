@@ -84,6 +84,58 @@
     });
   }
 
+
+  function bindAjaxSearchForm() {
+    var form = document.querySelector('[data-pbc-search-form]');
+    if (!form) {
+      return;
+    }
+
+    var resultsWrapper = document.querySelector('[data-pbc-results-wrapper]');
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      if (!window.pbcFrontend || !window.pbcFrontend.ajaxUrl || !window.pbcFrontend.searchNonce) {
+        return;
+      }
+
+      if (resultsWrapper) {
+        resultsWrapper.innerHTML = '<div class="pbc-search-loading" aria-live="polite">Buscando opciones disponibles...</div>';
+      }
+
+      var formData = new FormData(form);
+      formData.append('action', 'pbc_search_packages');
+      formData.append('nonce', window.pbcFrontend.searchNonce);
+
+      fetch(window.pbcFrontend.ajaxUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: formData,
+      })
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (data) {
+          if (!resultsWrapper) {
+            return;
+          }
+
+          if (data && data.success && data.data && data.data.html) {
+            resultsWrapper.innerHTML = data.data.html;
+            return;
+          }
+
+          resultsWrapper.innerHTML = '<p class="pbc-result-message">No se pudo procesar la búsqueda. Intentá nuevamente.</p>';
+        })
+        .catch(function () {
+          if (resultsWrapper) {
+            resultsWrapper.innerHTML = '<p class="pbc-result-message">Hubo un problema de conexión al buscar paquetes.</p>';
+          }
+        });
+    });
+  }
+
   function bindEmailInquiryModal() {
     var modal = document.querySelector('[data-pbc-email-modal]');
     if (!modal) {
@@ -224,5 +276,6 @@
   });
 
   bindDestinationAutocomplete();
+  bindAjaxSearchForm();
   bindEmailInquiryModal();
 })();

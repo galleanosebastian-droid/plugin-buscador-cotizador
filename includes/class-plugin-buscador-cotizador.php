@@ -41,6 +41,8 @@ class Plugin_Buscador_Cotizador {
 		add_action( 'wp_ajax_nopriv_pbc_send_email_inquiry', array( $this, 'handle_send_email_inquiry' ) );
 		add_action( 'wp_ajax_pbc_destination_suggestions', array( $this, 'handle_destination_suggestions' ) );
 		add_action( 'wp_ajax_nopriv_pbc_destination_suggestions', array( $this, 'handle_destination_suggestions' ) );
+		add_action( 'wp_ajax_pbc_search_packages', array( $this, 'handle_search_packages' ) );
+		add_action( 'wp_ajax_nopriv_pbc_search_packages', array( $this, 'handle_search_packages' ) );
 		add_shortcode( 'buscador_cotizador', array( $this, 'render_buscador_cotizador_shortcode' ) );
 		add_shortcode( 'buscador_cotizador_demo', array( $this, 'render_demo_shortcode' ) );
 
@@ -488,6 +490,7 @@ class Plugin_Buscador_Cotizador {
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( 'pbc_send_email_inquiry' ),
+				'searchNonce' => wp_create_nonce( 'pbc_search_packages' ),
 				'destinationNonce' => wp_create_nonce( 'pbc_destination_suggestions' ),
 			)
 		);
@@ -515,6 +518,43 @@ class Plugin_Buscador_Cotizador {
 		require PBC_PLUGIN_PATH . 'includes/views/shortcode-buscador-cotizador.php';
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Endpoint AJAX para procesar la búsqueda de paquetes sin recargar la página.
+	 *
+	 * @return void
+	 */
+	public function handle_search_packages() {
+		$nonce = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
+
+		if ( ! wp_verify_nonce( $nonce, 'pbc_search_packages' ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'No se pudo validar la búsqueda. Recargá la página e intentá nuevamente.', 'plugin-buscador-cotizador' ),
+				),
+				403
+			);
+		}
+
+		$form_data = array(
+			'destino'   => isset( $_POST['pbc_destino'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_destino'] ) ) : '',
+			'fecha'     => isset( $_POST['pbc_fecha'] ) ? sanitize_text_field( wp_unslash( $_POST['pbc_fecha'] ) ) : '',
+			'noches'    => isset( $_POST['pbc_noches'] ) ? absint( $_POST['pbc_noches'] ) : '',
+			'pasajeros' => isset( $_POST['pbc_pasajeros'] ) ? absint( $_POST['pbc_pasajeros'] ) : '',
+		);
+
+		$search_result = $this->search_wtp_packages( $form_data );
+
+		ob_start();
+		require PBC_PLUGIN_PATH . 'includes/views/partials/search-results.php';
+		$results_html = (string) ob_get_clean();
+
+		wp_send_json_success(
+			array(
+				'html' => $results_html,
+			)
+		);
 	}
 
 	/**
