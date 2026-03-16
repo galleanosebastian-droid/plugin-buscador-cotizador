@@ -14,7 +14,7 @@ $notice = isset( $_GET['pbc_notice'] ) ? sanitize_text_field( rawurldecode( (str
 ?>
 <div class="wrap">
 	<h1><?php esc_html_e( 'Buscador Cotizador · Importar destinos', 'plugin-buscador-cotizador' ); ?></h1>
-	<p><?php esc_html_e( 'Subí un archivo .txt o .csv (compatible con cities1000.txt de GeoNames) para actualizar los destinos.', 'plugin-buscador-cotizador' ); ?></p>
+	<p><?php esc_html_e( 'Subí un archivo .txt o .csv de GeoNames para actualizar países, regiones y ciudades. Soporta cities1000.txt, countryInfo.txt y admin1CodesASCII.txt.', 'plugin-buscador-cotizador' ); ?></p>
 
 	<?php if ( ! empty( $notice ) ) : ?>
 		<div class="notice notice-<?php echo ( 'success' === $status ) ? 'success' : 'error'; ?> is-dismissible">
@@ -34,7 +34,7 @@ $notice = isset( $_GET['pbc_notice'] ) ? sanitize_text_field( rawurldecode( (str
 					</th>
 					<td>
 						<input type="file" id="pbc_destinations_file" name="pbc_destinations_file" accept=".txt,.csv,text/plain,text/csv" required />
-						<p class="description"><?php esc_html_e( 'El archivo cities1000.txt de GeoNames usa tabulaciones y está soportado.', 'plugin-buscador-cotizador' ); ?></p>
+						<p class="description"><?php esc_html_e( 'El importador detecta automáticamente el tipo de archivo y usa el parser correcto para cada formato.', 'plugin-buscador-cotizador' ); ?></p>
 					</td>
 				</tr>
 			</tbody>
