@@ -95,6 +95,8 @@
 .pbc-package-card,
 .pbc-suggestion-card {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: #f8fafc;
@@ -123,6 +125,7 @@
 .pbc-package-content,
 .pbc-suggestion-card {
   padding: 1rem;
+  min-width: 0;
 }
 
 .pbc-package-title,
@@ -131,6 +134,7 @@
   color: #0f172a;
   font-size: 1.05rem;
   line-height: 1.35;
+  white-space: normal;
   overflow-wrap: anywhere;
   word-break: normal;
 }
@@ -144,9 +148,11 @@
   color: #334155;
   font-size: 0.96rem;
   line-height: 1.4;
+  min-width: 0;
 }
 
 .pbc-package-meta li {
+  white-space: normal;
   overflow-wrap: anywhere;
   word-break: normal;
 }
@@ -167,6 +173,8 @@
 .pbc-action-button {
   display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 0.65rem 0.75rem;
   border-radius: 6px;
   border: 1px solid #2271b1;
@@ -179,6 +187,80 @@
   text-align: center;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  .pbc-search-results,
+  .pbc-search-results-wrapper,
+  .pbc-package-list,
+  .pbc-suggestion-list,
+  .pbc-package-card,
+  .pbc-suggestion-card,
+  .pbc-package-media,
+  .pbc-package-content {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .pbc-package-list,
+  .pbc-suggestion-list {
+    display: block;
+  }
+
+  .pbc-package-card,
+  .pbc-suggestion-card {
+    display: block;
+    margin-bottom: 0.9rem;
+  }
+
+  .pbc-package-media {
+    min-height: 170px;
+    aspect-ratio: 16 / 10;
+  }
+
+  .pbc-package-image {
+    min-height: 170px;
+  }
+
+  .pbc-package-title,
+  .pbc-suggestion-title {
+    font-size: 0.98rem;
+    line-height: 1.35;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+
+  .pbc-package-meta {
+    font-size: 0.92rem;
+    line-height: 1.35;
+  }
+
+  .pbc-contact-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .pbc-contact-actions .pbc-action-button:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .pbc-contact-actions .pbc-action-button:nth-child(odd):last-child {
+    grid-column: 1 / -1;
+  }
+
+  .pbc-action-button {
+    width: 100%;
+    font-size: 0.9rem;
+    line-height: 1.3;
+    white-space: normal;
+    word-break: normal;
+  }
 }
 
 .pbc-action-button:hover,
