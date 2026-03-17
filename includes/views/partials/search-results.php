@@ -17,6 +17,25 @@ if ( ! isset( $search_result ) || ! is_array( $search_result ) ) {
 	<p class="pbc-result-message"><?php echo esc_html( (string) $search_result['message'] ); ?></p>
 	<p class="pbc-capacity-note"><?php esc_html_e( 'Capacidad sujeta a confirmación', 'plugin-buscador-cotizador' ); ?></p>
 
+	<?php if ( ! empty( $search_result['correction_candidates'] ) ) : ?>
+		<div class="pbc-correction-block">
+			<p class="pbc-correction-title"><?php esc_html_e( '¿Quisiste decir?', 'plugin-buscador-cotizador' ); ?></p>
+			<div class="pbc-contact-actions">
+				<?php foreach ( array_slice( (array) $search_result['correction_candidates'], 0, 3 ) as $candidate_destination ) : ?>
+					<?php
+					$candidate_query = array(
+						'pbc_destino'   => (string) $candidate_destination,
+						'pbc_fecha'     => (string) $form_data['fecha'],
+						'pbc_noches'    => absint( (string) $form_data['noches'] ),
+						'pbc_pasajeros' => absint( (string) $form_data['pasajeros'] ),
+					);
+					?>
+					<a class="pbc-action-button pbc-action-secondary" href="<?php echo esc_url( add_query_arg( $candidate_query, get_permalink() ) ); ?>"><?php echo esc_html( (string) $candidate_destination ); ?></a>
+				<?php endforeach; ?>
+			</div>
+		</div>
+	<?php endif; ?>
+
 	<?php if ( ! empty( $search_result['posts'] ) ) : ?>
 		<div class="pbc-package-list">
 			<?php foreach ( $search_result['posts'] as $package_post ) : ?>
@@ -76,6 +95,25 @@ if ( ! isset( $search_result ) || ! is_array( $search_result ) ) {
 					</div>
 				</div>
 			<?php endforeach; ?>
+		</div>
+	<?php endif; ?>
+
+	<?php if ( ! empty( $search_result['show_personalized_help'] ) ) : ?>
+		<?php
+		$assistance_context = array(
+			'item_name'   => __( 'Atención personalizada', 'plugin-buscador-cotizador' ),
+			'destination' => ! empty( $search_result['corrected_destination'] ) ? (string) $search_result['corrected_destination'] : (string) $search_result['raw_destination'],
+			'travel_date' => (string) $form_data['fecha'],
+			'nights'      => absint( (string) $form_data['noches'] ),
+			'passengers'  => absint( (string) $form_data['pasajeros'] ),
+		);
+		?>
+		<div class="pbc-personalized-help-card">
+			<p class="pbc-suggestion-title"><?php esc_html_e( 'Atención personalizada', 'plugin-buscador-cotizador' ); ?></p>
+			<p class="pbc-capacity-note"><?php esc_html_e( 'Si no encontramos una coincidencia confiable, te ayudamos por WhatsApp con una propuesta a medida.', 'plugin-buscador-cotizador' ); ?></p>
+			<div class="pbc-contact-actions">
+				<a class="pbc-action-button" href="<?php echo esc_url( $this->get_whatsapp_url( $assistance_context ) ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Consultar por WhatsApp', 'plugin-buscador-cotizador' ); ?></a>
+			</div>
 		</div>
 	<?php endif; ?>
 </div>
