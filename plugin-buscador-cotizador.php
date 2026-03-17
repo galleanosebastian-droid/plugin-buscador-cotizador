@@ -3,7 +3,7 @@
  * Plugin Name:       Plugin Buscador Cotizador
  * Description:       Buscador y cotizador básico con shortcode de prueba para validar instalación.
  * Version:           1.0.0
- * Author:            Equipo Plugin Buscador Cotizador
+ * Author:            Sebastián Pablo Galleano
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Text Domain:       plugin-buscador-cotizador
