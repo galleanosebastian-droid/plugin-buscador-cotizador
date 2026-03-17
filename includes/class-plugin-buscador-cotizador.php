@@ -565,11 +565,9 @@ class Plugin_Buscador_Cotizador {
 	 * @return array<string, mixed>
 	 */
 	private function search_wtp_packages( $form_data ) {
-		$destino_input   = trim( (string) $form_data['destino'] );
-		$resolved_result = $this->resolve_destination_from_imported( $destino_input );
-		$destino_query   = ! empty( $resolved_result['resolved_destination'] ) ? (string) $resolved_result['resolved_destination'] : $destino_input;
-		$fecha           = (string) $form_data['fecha'];
-		$noches          = absint( (string) $form_data['noches'] );
+		$destino_input = trim( (string) $form_data['destino'] );
+		$fecha         = (string) $form_data['fecha'];
+		$noches        = absint( (string) $form_data['noches'] );
 
 		$layers = array(
 			'estricta'       => array(
@@ -598,28 +596,30 @@ class Plugin_Buscador_Cotizador {
 			),
 		);
 
-		foreach ( $layers as $layer_key => $layer_config ) {
-			$posts = $this->run_packages_query( $destino_query, $fecha, $noches, $layer_config );
+		$original_result = $this->run_search_layers( $destino_input, $fecha, $noches, $layers );
 
-			if ( ! empty( $posts ) ) {
-				$message = (string) $layer_config['message'];
+		if ( ! empty( $original_result ) ) {
+			return $original_result;
+		}
 
+		$resolved_result = $this->resolve_destination_from_imported( $destino_input );
+		$destino_query   = ! empty( $resolved_result['resolved_destination'] ) ? (string) $resolved_result['resolved_destination'] : $destino_input;
+
+		if ( $destino_query !== $destino_input ) {
+			$resolved_search_result = $this->run_search_layers( $destino_query, $fecha, $noches, $layers );
+
+			if ( ! empty( $resolved_search_result ) ) {
 				if ( ! empty( $resolved_result['note'] ) ) {
-					$message .= ' ' . (string) $resolved_result['note'];
+					$resolved_search_result['message'] .= ' ' . (string) $resolved_result['note'];
 				}
 
-				return array(
-					'layer'         => $layer_key,
-					'message'       => $message,
-					'posts'         => $posts,
-					'suggestions'   => array(),
-				);
+				return $resolved_search_result;
 			}
 		}
 
 		$empty_message = __( 'No encontramos paquetes disponibles con los criterios ingresados.', 'plugin-buscador-cotizador' );
 
-		if ( ! empty( $resolved_result['note'] ) ) {
+		if ( ! empty( $resolved_result['note'] ) && $destino_query !== $destino_input ) {
 			$empty_message .= ' ' . (string) $resolved_result['note'];
 		}
 
@@ -632,6 +632,33 @@ class Plugin_Buscador_Cotizador {
 	}
 
 	/**
+	 * Ejecuta la búsqueda por capas sobre un destino específico.
+	 *
+	 * @param string                                    $destino      Destino a consultar.
+	 * @param string                                    $fecha        Fecha solicitada.
+	 * @param int                                       $noches       Noches solicitadas.
+	 * @param array<string, array<string, bool|string>> $layers       Capas de búsqueda.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function run_search_layers( $destino, $fecha, $noches, $layers ) {
+		foreach ( $layers as $layer_key => $layer_config ) {
+			$posts = $this->run_packages_query( $destino, $fecha, $noches, $layer_config );
+
+			if ( ! empty( $posts ) ) {
+				return array(
+					'layer'         => $layer_key,
+					'message'       => (string) $layer_config['message'],
+					'posts'         => $posts,
+					'suggestions'   => array(),
+				);
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Resuelve el destino ingresado contra la base importada y aplica corrección sólo con confianza alta.
 	 *
 	 * @param string $destino_input Destino escrito por el usuario.
@@ -639,6 +666,8 @@ class Plugin_Buscador_Cotizador {
 	 * @return array<string, string>
 	 */
 	private function resolve_destination_from_imported( $destino_input ) {
+		global $wpdb;
+
 		$destino_input = trim( (string) $destino_input );
 
 		if ( '' === $destino_input ) {
@@ -657,7 +686,25 @@ class Plugin_Buscador_Cotizador {
 			);
 		}
 
-		$candidates = $this->get_imported_destinations( $destino_input, 15 );
+		$table_name = self::get_destinations_table_name();
+		$like_term  = '%' . $wpdb->esc_like( $normalized_input ) . '%';
+
+		$query = $wpdb->prepare(
+			"SELECT name, ascii_name, alternate_names, population
+			FROM {$table_name}
+			WHERE search_name LIKE %s
+				OR LOWER(ascii_name) LIKE %s
+				OR LOWER(name) LIKE %s
+				OR LOWER(alternate_names) LIKE %s
+			ORDER BY population DESC, name ASC
+			LIMIT 40",
+			$like_term,
+			$like_term,
+			$like_term,
+			$like_term
+		);
+
+		$candidates = $wpdb->get_results( $query, ARRAY_A );
 
 		if ( empty( $candidates ) ) {
 			return array(
@@ -670,28 +717,19 @@ class Plugin_Buscador_Cotizador {
 		$best_score     = -1;
 
 		foreach ( $candidates as $candidate ) {
-			$candidate_name = isset( $candidate['name'] ) ? (string) $candidate['name'] : '';
+			$score_info = $this->score_destination_candidate( $normalized_input, $candidate );
+			$score      = isset( $score_info['score'] ) ? (float) $score_info['score'] : 0;
 
-			if ( '' === $candidate_name ) {
-				continue;
-			}
-
-			$normalized_candidate = $this->normalize_destination_text( $candidate_name );
-
-			if ( '' === $normalized_candidate ) {
-				continue;
-			}
-
-			if ( $normalized_candidate === $normalized_input ) {
+			if ( $score >= 0.995 && ! empty( $score_info['matched_name'] ) ) {
 				return array(
-					'resolved_destination' => $candidate_name,
-					'note'                 => '',
+					'resolved_destination' => (string) $candidate['name'],
+					'note'                 => sprintf(
+						/* translators: %s: corrected destination. */
+						__( 'Mostrando resultados para: %s.', 'plugin-buscador-cotizador' ),
+						(string) $candidate['name']
+					),
 				);
 			}
-
-			$distance = levenshtein( $normalized_input, $normalized_candidate );
-			$max_len  = max( strlen( $normalized_input ), strlen( $normalized_candidate ) );
-			$score    = $max_len > 0 ? 1 - ( $distance / $max_len ) : 0;
 
 			if ( $score > $best_score ) {
 				$best_score     = $score;
@@ -707,7 +745,7 @@ class Plugin_Buscador_Cotizador {
 		}
 
 		$input_length = strlen( $normalized_input );
-		$threshold    = $input_length <= 5 ? 0.86 : 0.78;
+		$threshold    = $input_length <= 5 ? 0.90 : 0.80;
 
 		if ( $best_score < $threshold ) {
 			return array(
@@ -721,12 +759,76 @@ class Plugin_Buscador_Cotizador {
 		return array(
 			'resolved_destination' => $resolved_destination,
 			'note'                 => sprintf(
-				/* translators: 1: entered destination, 2: corrected destination. */
-				__( 'Interpretamos "%1$s" como "%2$s" para mejorar la búsqueda.', 'plugin-buscador-cotizador' ),
-				$destino_input,
+				/* translators: %s: corrected destination. */
+				__( 'Mostrando resultados para: %s.', 'plugin-buscador-cotizador' ),
 				$resolved_destination
 			),
 		);
+	}
+
+	/**
+	 * Puntúa un candidato de destino usando nombre principal, ASCII, alternativos y similitud.
+	 *
+	 * @param string               $normalized_input Entrada normalizada del usuario.
+	 * @param array<string, mixed> $candidate        Registro de destino importado.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function score_destination_candidate( $normalized_input, $candidate ) {
+		$variants = array();
+
+		foreach ( array( 'name', 'ascii_name' ) as $field ) {
+			if ( ! empty( $candidate[ $field ] ) ) {
+				$variants[] = (string) $candidate[ $field ];
+			}
+		}
+
+		if ( ! empty( $candidate['alternate_names'] ) ) {
+			$alternates = explode( ',', (string) $candidate['alternate_names'] );
+
+			foreach ( $alternates as $alternate_name ) {
+				$alternate_name = trim( (string) $alternate_name );
+
+				if ( '' !== $alternate_name ) {
+					$variants[] = $alternate_name;
+				}
+			}
+		}
+
+		$variants = array_values( array_unique( $variants ) );
+		$best     = array(
+			'score'        => 0,
+			'matched_name' => '',
+		);
+
+		foreach ( $variants as $variant ) {
+			$normalized_variant = $this->normalize_destination_text( $variant );
+
+			if ( '' === $normalized_variant ) {
+				continue;
+			}
+
+			$score = 0;
+
+			if ( $normalized_variant === $normalized_input ) {
+				$score = 1;
+			} elseif ( false !== strpos( $normalized_variant, $normalized_input ) || false !== strpos( $normalized_input, $normalized_variant ) ) {
+				$score = 0.90;
+			} else {
+				$distance = levenshtein( $normalized_input, $normalized_variant );
+				$max_len  = max( strlen( $normalized_input ), strlen( $normalized_variant ) );
+				$score    = $max_len > 0 ? 1 - ( $distance / $max_len ) : 0;
+			}
+
+			if ( $score > $best['score'] ) {
+				$best = array(
+					'score'        => $score,
+					'matched_name' => $variant,
+				);
+			}
+		}
+
+		return $best;
 	}
 
 	/**
@@ -738,6 +840,8 @@ class Plugin_Buscador_Cotizador {
 	 */
 	private function normalize_destination_text( $value ) {
 		$value = strtolower( remove_accents( sanitize_text_field( (string) $value ) ) );
+		$value = preg_replace( '/\b(ciudad de|provincia de|capital de|ciudad|provincia)\b/u', ' ', (string) $value );
+		$value = preg_replace( '/[^a-z0-9\s]/', ' ', (string) $value );
 		$value = preg_replace( '/\s+/', ' ', $value );
 
 		return trim( (string) $value );
