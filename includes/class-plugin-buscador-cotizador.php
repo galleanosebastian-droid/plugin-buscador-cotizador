@@ -568,6 +568,7 @@ class Plugin_Buscador_Cotizador {
 		$destino_input = trim( (string) $form_data['destino'] );
 		$fecha         = (string) $form_data['fecha'];
 		$noches        = absint( (string) $form_data['noches'] );
+		$pasajeros     = absint( (string) $form_data['pasajeros'] );
 
 		$layers = array(
 			'estricta'       => array(
@@ -602,10 +603,10 @@ class Plugin_Buscador_Cotizador {
 			return $original_result;
 		}
 
-		$resolved_result = $this->resolve_destination_from_imported( $destino_input );
+		$resolved_result = $this->find_destination_matches( $destino_input );
 		$destino_query   = ! empty( $resolved_result['resolved_destination'] ) ? (string) $resolved_result['resolved_destination'] : $destino_input;
 
-		if ( $destino_query !== $destino_input ) {
+		if ( ! empty( $resolved_result['is_confident'] ) && $destino_query !== $destino_input ) {
 			$resolved_search_result = $this->run_search_layers( $destino_query, $fecha, $noches, $layers );
 
 			if ( ! empty( $resolved_search_result ) ) {
@@ -624,10 +625,15 @@ class Plugin_Buscador_Cotizador {
 		}
 
 		return array(
-			'layer'       => 'sin_resultados',
-			'message'     => $empty_message,
-			'posts'       => array(),
-			'suggestions' => $this->build_suggestions( $destino_input, $fecha, $noches, absint( (string) $form_data['pasajeros'] ) ),
+			'layer'                   => 'sin_resultados',
+			'message'                 => $empty_message,
+			'posts'                   => array(),
+			'suggestions'             => ! empty( $resolved_result['is_confident'] ) ? $this->build_suggestions( $destino_query, $fecha, $noches, $pasajeros ) : array(),
+			'show_personalized_help'  => true,
+			'raw_destination'         => $destino_input,
+			'corrected_destination'   => isset( $resolved_result['resolved_destination'] ) ? (string) $resolved_result['resolved_destination'] : '',
+			'correction_candidates'   => ! empty( $resolved_result['suggested_destinations'] ) ? (array) $resolved_result['suggested_destinations'] : array(),
+			'is_confident_correction' => ! empty( $resolved_result['is_confident'] ),
 		);
 	}
 
@@ -665,15 +671,17 @@ class Plugin_Buscador_Cotizador {
 	 *
 	 * @return array<string, string>
 	 */
-	private function resolve_destination_from_imported( $destino_input ) {
+	private function find_destination_matches( $destino_input ) {
 		global $wpdb;
 
 		$destino_input = trim( (string) $destino_input );
 
 		if ( '' === $destino_input ) {
 			return array(
-				'resolved_destination' => '',
-				'note'                 => '',
+				'resolved_destination'   => '',
+				'note'                   => '',
+				'is_confident'           => false,
+				'suggested_destinations' => array(),
 			);
 		}
 
@@ -681,8 +689,10 @@ class Plugin_Buscador_Cotizador {
 
 		if ( '' === $normalized_input ) {
 			return array(
-				'resolved_destination' => $destino_input,
-				'note'                 => '',
+				'resolved_destination'   => $destino_input,
+				'note'                   => '',
+				'is_confident'           => false,
+				'suggested_destinations' => array(),
 			);
 		}
 
@@ -692,12 +702,20 @@ class Plugin_Buscador_Cotizador {
 		$query = $wpdb->prepare(
 			"SELECT name, ascii_name, alternate_names, population
 			FROM {$table_name}
-			WHERE search_name LIKE %s
+			WHERE search_name = %s
+				OR LOWER(ascii_name) = %s
+				OR LOWER(name) = %s
+				OR LOWER(alternate_names) LIKE %s
+				OR search_name LIKE %s
 				OR LOWER(ascii_name) LIKE %s
 				OR LOWER(name) LIKE %s
 				OR LOWER(alternate_names) LIKE %s
 			ORDER BY population DESC, name ASC
-			LIMIT 40",
+			LIMIT 60",
+			$normalized_input,
+			$normalized_input,
+			$normalized_input,
+			'%,'.$wpdb->esc_like( $normalized_input ).',%',
 			$like_term,
 			$like_term,
 			$like_term,
@@ -708,61 +726,93 @@ class Plugin_Buscador_Cotizador {
 
 		if ( empty( $candidates ) ) {
 			return array(
-				'resolved_destination' => $destino_input,
-				'note'                 => '',
+				'resolved_destination'   => $destino_input,
+				'note'                   => '',
+				'is_confident'           => false,
+				'suggested_destinations' => array(),
 			);
 		}
 
-		$best_candidate = null;
-		$best_score     = -1;
+		$scored_candidates = array();
 
 		foreach ( $candidates as $candidate ) {
 			$score_info = $this->score_destination_candidate( $normalized_input, $candidate );
 			$score      = isset( $score_info['score'] ) ? (float) $score_info['score'] : 0;
 
-			if ( $score >= 0.995 && ! empty( $score_info['matched_name'] ) ) {
-				return array(
-					'resolved_destination' => (string) $candidate['name'],
-					'note'                 => sprintf(
-						/* translators: %s: corrected destination. */
-						__( 'Mostrando resultados para: %s.', 'plugin-buscador-cotizador' ),
-						(string) $candidate['name']
-					),
-				);
-			}
-
-			if ( $score > $best_score ) {
-				$best_score     = $score;
-				$best_candidate = $candidate;
-			}
-		}
-
-		if ( empty( $best_candidate ) || ! isset( $best_candidate['name'] ) ) {
-			return array(
-				'resolved_destination' => $destino_input,
-				'note'                 => '',
+			$scored_candidates[] = array(
+				'name'  => isset( $candidate['name'] ) ? (string) $candidate['name'] : '',
+				'score' => $score,
 			);
 		}
 
-		$input_length = strlen( $normalized_input );
-		$threshold    = $input_length <= 5 ? 0.90 : 0.80;
+		usort(
+			$scored_candidates,
+			static function ( $left, $right ) {
+				if ( $left['score'] === $right['score'] ) {
+					return strcmp( $left['name'], $right['name'] );
+				}
 
-		if ( $best_score < $threshold ) {
+				return ( $left['score'] > $right['score'] ) ? -1 : 1;
+			}
+		);
+
+		$scored_candidates = array_values(
+			array_filter(
+				$scored_candidates,
+				static function ( $item ) {
+					return ! empty( $item['name'] );
+				}
+			)
+		);
+
+		if ( empty( $scored_candidates ) ) {
 			return array(
-				'resolved_destination' => $destino_input,
-				'note'                 => '',
+				'resolved_destination'   => $destino_input,
+				'note'                   => '',
+				'is_confident'           => false,
+				'suggested_destinations' => array(),
+			);
+		}
+
+		$best_candidate = $scored_candidates[0];
+		$second_best    = isset( $scored_candidates[1] ) ? $scored_candidates[1] : null;
+		$confidence_gap = $second_best ? (float) $best_candidate['score'] - (float) $second_best['score'] : 1;
+		$is_confident   = ( $best_candidate['score'] >= 0.92 ) || ( $best_candidate['score'] >= 0.86 && $confidence_gap >= 0.08 );
+
+		if ( ! $is_confident ) {
+			$suggested_destinations = array();
+
+			foreach ( $scored_candidates as $scored_candidate ) {
+				if ( $scored_candidate['score'] < 0.74 ) {
+					continue;
+				}
+
+				$suggested_destinations[] = $scored_candidate['name'];
+
+				if ( count( $suggested_destinations ) >= 3 ) {
+					break;
+				}
+			}
+
+			return array(
+				'resolved_destination'   => $destino_input,
+				'note'                   => '',
+				'is_confident'           => false,
+				'suggested_destinations' => $suggested_destinations,
 			);
 		}
 
 		$resolved_destination = (string) $best_candidate['name'];
 
 		return array(
-			'resolved_destination' => $resolved_destination,
-			'note'                 => sprintf(
+			'resolved_destination'   => $resolved_destination,
+			'note'                   => sprintf(
 				/* translators: %s: corrected destination. */
 				__( 'Mostrando resultados para: %s.', 'plugin-buscador-cotizador' ),
 				$resolved_destination
 			),
+			'is_confident'           => true,
+			'suggested_destinations' => array(),
 		);
 	}
 
