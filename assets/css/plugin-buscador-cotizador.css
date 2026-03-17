@@ -375,21 +375,20 @@
   .pbc-search-form {
     grid-template-columns: minmax(240px, 2.4fr) minmax(170px, 1.25fr) minmax(130px, 1fr) minmax(140px, 1fr) minmax(170px, 1.15fr);
     gap: 0.8rem;
+    align-items: end;
   }
 
   .pbc-search-column-fecha {
-    position: relative;
-    padding-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
   }
 
   .pbc-search-column-fecha .pbc-search-field-label {
-    position: absolute;
-    top: 0;
-    left: 0.1rem;
-    margin: 0;
+    margin: 0 0 0.35rem;
     color: #64748b;
     font-size: 0.74rem;
-    line-height: 1;
+    line-height: 1.2;
   }
 
   .pbc-search-column-submit {
