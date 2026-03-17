@@ -21,7 +21,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<label class="pbc-search-field-label" for="pbc-fecha"><?php esc_html_e( 'Fecha', 'plugin-buscador-cotizador' ); ?></label>
 			<div class="pbc-date-field">
 				<input id="pbc-fecha" name="pbc_fecha" type="date" value="<?php echo esc_attr( $form_data['fecha'] ); ?>" aria-label="<?php esc_attr_e( 'Fecha', 'plugin-buscador-cotizador' ); ?>" required />
-				<span class="pbc-date-field-hint" aria-hidden="true"><?php esc_html_e( 'Fecha', 'plugin-buscador-cotizador' ); ?></span>
 			</div>
 		</div>
 

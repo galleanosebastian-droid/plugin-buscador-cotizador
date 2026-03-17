@@ -30,10 +30,6 @@
   position: relative;
 }
 
-.pbc-date-field-hint {
-  display: none;
-}
-
 .pbc-search-field-label {
   display: block;
   margin: 0 0 0.35rem;
@@ -53,6 +49,10 @@
   padding: 0.75rem 0.85rem;
   font-size: 0.95rem;
   color: #1e293b;
+}
+
+.pbc-search-column-fecha input[type="date"] {
+  padding-right: 2.2rem;
 }
 
 .pbc-search-form input::placeholder,
@@ -377,24 +377,30 @@
     gap: 0.8rem;
   }
 
-  .pbc-search-column-fecha .pbc-search-field-label {
-    display: none;
+  .pbc-search-shell .pbc-search-form .pbc-search-column-fecha {
+    position: static !important;
+    padding-top: 0 !important;
+    margin-top: 0 !important;
   }
 
-  .pbc-search-column-fecha .pbc-date-field-hint {
-    position: absolute;
-    top: 50%;
-    left: 0.85rem;
-    transform: translateY(-50%);
-    display: inline-block;
-    color: #64748b;
-    font-size: 0.95rem;
-    pointer-events: none;
+  .pbc-search-shell .pbc-search-form .pbc-search-column-fecha .pbc-search-field-label {
+    display: none !important;
+    margin: 0 !important;
   }
 
-  .pbc-search-column-fecha input:focus + .pbc-date-field-hint,
-  .pbc-search-column-fecha input:valid + .pbc-date-field-hint {
-    opacity: 0;
+  .pbc-search-shell .pbc-search-form .pbc-search-column-fecha .pbc-date-field {
+    position: relative;
+    height: 100%;
+    margin: 0;
+  }
+
+  .pbc-search-shell .pbc-search-form .pbc-search-column-fecha input[type="date"] {
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    box-sizing: border-box;
+    padding-right: 2.2rem;
+    line-height: 1.2;
   }
 
   .pbc-search-column-submit {
