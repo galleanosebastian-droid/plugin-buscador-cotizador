@@ -19,7 +19,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 		<div class="pbc-search-column pbc-search-column-fecha">
 			<label class="pbc-search-field-label" for="pbc-fecha"><?php esc_html_e( 'Fecha', 'plugin-buscador-cotizador' ); ?></label>
-			<input id="pbc-fecha" name="pbc_fecha" type="date" value="<?php echo esc_attr( $form_data['fecha'] ); ?>" required />
+			<div class="pbc-date-field">
+				<input id="pbc-fecha" name="pbc_fecha" type="date" value="<?php echo esc_attr( $form_data['fecha'] ); ?>" aria-label="<?php esc_attr_e( 'Fecha', 'plugin-buscador-cotizador' ); ?>" required />
+				<span class="pbc-date-field-hint" aria-hidden="true"><?php esc_html_e( 'Fecha', 'plugin-buscador-cotizador' ); ?></span>
+			</div>
 		</div>
 
 		<div class="pbc-search-column pbc-search-column-noches">

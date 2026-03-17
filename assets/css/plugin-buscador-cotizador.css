@@ -26,6 +26,14 @@
   min-width: 0;
 }
 
+.pbc-date-field {
+  position: relative;
+}
+
+.pbc-date-field-hint {
+  display: none;
+}
+
 .pbc-search-field-label {
   display: block;
   margin: 0 0 0.35rem;
@@ -367,6 +375,26 @@
   .pbc-search-form {
     grid-template-columns: minmax(240px, 2.4fr) minmax(170px, 1.25fr) minmax(130px, 1fr) minmax(140px, 1fr) minmax(170px, 1.15fr);
     gap: 0.8rem;
+  }
+
+  .pbc-search-column-fecha .pbc-search-field-label {
+    display: none;
+  }
+
+  .pbc-search-column-fecha .pbc-date-field-hint {
+    position: absolute;
+    top: 50%;
+    left: 0.85rem;
+    transform: translateY(-50%);
+    display: inline-block;
+    color: #64748b;
+    font-size: 0.95rem;
+    pointer-events: none;
+  }
+
+  .pbc-search-column-fecha input:focus + .pbc-date-field-hint,
+  .pbc-search-column-fecha input:valid + .pbc-date-field-hint {
+    opacity: 0;
   }
 
   .pbc-search-column-submit {
